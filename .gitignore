@@ -1,0 +1,11 @@
+.api_token
+.tw_auth_state.json
+*.pyc
+__pycache__/
+.server.lock
+.env
+.venv/
+venv/
+data.db
+backups/
+exports/

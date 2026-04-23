@@ -1,0 +1,160 @@
+# Extella Expert Rules for Cursor
+# Правила разработки экспертов для платформы Extella
+
+---
+
+## 1. СТРУКТУРА ФАЙЛА — ОБЯЗАТЕЛЬНО
+
+Каждый .py файл = один эксперт. Структура строгая:
+
+```python
+$extens("include.py")                                        # СТРОКА 1 — ВСЕГДА, без исключений
+include("import requests", ["extella-pip install requests"]) # зависимости — ТОЛЬКО extella-pip
+include("import sqlite3", [])                                # stdlib = пустой список
+
+def tw_example(                  # имя функции = имя файла без .py
+    param1: str = "",            # ВСЕ параметры с типом и дефолтом
+    param2: int = 0,
+    api_key_name: str = "openai_api_key",
+) -> dict:                       # ВСЕГДА -> dict
+    import requests              # импорты ВНУТРИ функции, не снаружи
+    ...
+    return {"status": "success", "result": ...}  # поле status обязательно
+2. КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНОНЕЛЬЗЯНУЖНО ВМЕСТОpip install X или pip3 install Xextella-pip install XAPI ключи в коде: api_key = "sk-abc..."Читать из KV Store по имениХардкод путей: "/Users/john/file.pdf"Path.home() / "Downloads" / "file.pdf"*args или **kwargs в сигнатуреЯвные именованные параметрыВозвращать файлы/байты/base64 в returnВозвращать только путь к файлуИмпорты вне тела функцииТолько внутри defos.path.join(...) для путейPath(...) / "subdir"3. ЧТЕНИЕ СЕКРЕТОВ — ТОЛЬКО ЧЕРЕЗ KV STOREНикаких ключей в коде. Шаблон:def kv_get(key):
+    import os, requests
+    BASE_URL = os.environ.get("EXTELLA_API_URL", "https://api.extella.ai")
+    try:
+        r = requests.post(BASE_URL + "/api/kv/get", json={"key": key}, timeout=10)
+        if r.status_code == 200: return r.json().get("value", "")
+    except Exception: pass
+    return ""
+
+# Использование:
+api_key = kv_get("openai_api_key")    # читать ключ по имени
+db_path = kv_get("tw_db_path")        # читать путь к БД
+token   = kv_get("extella_api_token") # читать токен Extella
+Стандартные имена ключей:
+extella_api_token — токен Extella API
+tw_db_path — путь к SQLite базе данных
+tw_session_{uuid} — Twitter сессия {auth_token, ct0}
+openai_api_key, groq_api_key, anthropic_api_key
+4. ВЫЗОВ ДРУГОГО ЭКСПЕРТА (NESTED)def run_expert(name, params, token, base_url):
+    import requests
+    r = requests.post(
+        base_url + "/api/expert/run",
+        headers={"X-Auth-Token": token, "Content-Type": "application/json"},
+        json={"expert_name": name, "params": params},
+        timeout=120
+    )
+    if r.status_code == 200:
+        data = r.json()
+        result = data.get("result")
+        return result if isinstance(result, dict) else data
+    return {"status": "error", "error": "HTTP " + str(r.status_code)}
+ВАЖНО: вызов другого эксперта — это HTTP POST на api.extella.ai, НЕ импорт Python-модуля.5. PLAYWRIGHT — СПЕЦИФИКА# Шаг 1 — добавить user site-packages ДО импорта (иначе ImportError)
+import site, importlib, sys
+up = site.getusersitepackages()
+if up not in sys.path: sys.path.insert(0, up)
+importlib.invalidate_caches()
+from playwright.sync_api import sync_playwright
+
+# Шаг 2 — перехват сетевых запросов: ТОЛЬКО page.route() (не page.on("response"))
+# page.on("response") — async callback, данные не успевают прийти до продолжения кода
+def on_route(route):
+    if "SearchTimeline" in route.request.url:
+        response = route.fetch()
+        data = response.json()
+        # ... обработка ...
+        route.fulfill(response=response)
+    else:
+        route.continue_()
+page.route("**/**", on_route)
+page.goto(url, wait_until="domcontentloaded", timeout=25000)
+page.wait_for_timeout(4000)  # дать время GraphQL ответам прийти
+
+# Шаг 3 — cookies для ОБОИХ доменов Twitter
+for domain in [".x.com", ".twitter.com"]:
+    ctx.add_cookies([
+        {"name": "auth_token", "value": auth_token, "domain": domain, "path": "/"},
+        {"name": "ct0",        "value": ct0,        "domain": domain, "path": "/"},
+    ])
+6. ЛОГИ — ОБЯЗАТЕЛЬНЫЕ PRINTКаждый эксперт должен выводить прогресс:print("[1/5] 🔄 Загрузка данных...")
+print("[2/5] 📥 Получение профилей...")
+print("[3/5] ⚙️  Обработка...")
+print("[4/5] 💾 Сохранение в БД...")
+print("[5/5] ✅ Готово!")
+7. СИНХРОНИЗАЦИЯ С EXTELLA ПОСЛЕ РЕДАКТИРОВАНИЯПосле изменения кода в Cursor — загрузить обратно в Extella:# Один эксперт:
+python sync_to_extella.py tw_discover
+
+# Все сразу:
+python sync_to_extella.py --all
+
+# Список доступных:
+python sync_to_extella.py --list
+Скрипт читает токен из .api_token файла в папке twitter_agent/.
+Код функции начинается ПОСЛЕ последней строки # ===... в файле.8. АРХИТЕКТУРА СИСТЕМЫexperts/
+├── tw_agent.py          ← точка входа, оркестратор
+├── tw_server.py         ← Flask :7842 + SPA UI (index.html)
+│   ├── /api/credentials/pool      ← прокси Twitter сессий
+│   ├── /api/run/smart_discover    ← NL → expand → discover
+│   └── /api/run/posts_for_profile
+├── tw_data.py           ← инициализация SQLite
+├── tw_auth.py           ← аккаунты Twitter, circuit breaker
+│
+├── tw_discover.py       ← поиск профилей (GraphQL People Search)
+│   ├── calls: tw_query_expand
+│   └── reads: localhost:7842/api/credentials/pool
+│
+├── tw_posts.py          ← сбор постов профилей
+│   ├── calls: tw_query_expand
+│   └── reads: localhost:7842/api/credentials/pool
+│
+├── tw_query_expand.py   ← NL → ключевые слова (LLM / rule-based)
+│   └── reads: ai_provider из Settings
+│
+├── tw_generate.py       ← AI генерация реплаев
+│   └── reads: ai_provider + ключи из KV Store
+│
+├── tw_queue.py          ← FSM: pending → approved → posted
+├── tw_post.py           ← постинг через Playwright
+│   └── reads: localhost:7842/api/credentials/{id}
+├── tw_monitor.py        ← мониторинг ответов
+└── tw_debug.py          ← диагностика
+SQLite таблицы (data.db):
+accounts, profiles, posts, reply_tasks,
+conversations, analytics, settings, workflow_state9. КРИТИЧЕСКИЕ НЮАНСЫ ЭТОГО ПРОЕКТАCredentials proxy:
+Эксперты НЕ читают Twitter сессии напрямую из KV — они делают GET на
+http://127.0.0.1:7842/api/credentials/pool. Flask имеет токен и
+читает надёжно. Прямой KV-вызов из nested expert ненадёжен (нет auth context).Deprecated Twitter API (все вернут 404):
+/i/api/1.1/users/lookup.json — не работает
+/i/api/1.1/users/show.json — не работает
+/i/api/1.1/account/settings.json — не работает
+/i/api/1.1/search/tweets.json — возвращает пустое тело
+user_timeline?screen_name=X — возвращает 0 твитов
+Работающие Twitter API:
+/i/api/1.1/search/typeahead.json — поиск пользователей
+/i/api/1.1/statuses/user_timeline.json?user_id=X — работает
+/i/api/1.1/statuses/home_timeline.json — работает
+GraphQL SearchTimeline через page.route() — работает
+Извлечение user_id из typeahead:
+Typeahead возвращает base64-encoded ID: VXNlcjoxNzU4...
+Декодировать: base64.decode(id) → "User:1758005289..." → split(":")[1]Twitter новые аккаунты:
+People Search возвращает 1-3 результата вместо 10+.
+Это ограничение на уровне сервера Twitter, Playwright не поможет обойти.
+С устоявшимся аккаунтом (2+ месяца, активность) — полные результаты.10. RETURN FORMAT# Всегда возвращать dict со status
+return {
+    "status": "success",        # обязательно
+    "result": processed_data,   # полезная нагрузка
+    "message": "...",           # описание
+}
+
+# При ошибке:
+return {
+    "status": "error",
+    "message": "Описание ошибки"
+}
+
+# НЕЛЬЗЯ возвращать:
+# return {"data": open("file.pdf").read()}    # файлы
+# return {"img": base64.encode(bytes)}        # бинарные данные
+# Возвращай только: {"output_path": "/path/to/file.pdf"}

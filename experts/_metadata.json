@@ -1,0 +1,283 @@
+{
+  "tw_agent": {
+    "name": "tw_agent",
+    "description": "Twitter Lead Agent — Master Nested Expert Orchestrator. Single entry point that orchestrates 10 sub-experts via REST API. Resilient launch: checks DB file directly, doesn't fail if nested call returns empty. Token bootstrap: api_token param → .api_token file → KV Store. Modes: launch/run/resume/status/background. Sub-experts needed: tw_data, tw_auth, tw_server, tw_discover, tw_posts, tw_generate, tw_queue, tw_post, tw_monitor, tw_debug. Parameters: mode — launch/run/resume/status/background; background_action — start/stop/status; open_browser — auto-open UI (default true); api_token — explicit Extella API token; keywords — for run mode; topics/reply_intent/language/ai_provider/account_id/dry_run — campaign settings; autostart_background; db_path_key; extella_token_key",
+    "kwargs": {
+      "account_id": "",
+      "ai_provider": "extella",
+      "api_token": "",
+      "autostart_background": false,
+      "background_action": "start",
+      "db_path_key": "tw_db_path",
+      "dry_run": false,
+      "extella_token_key": "extella_api_token",
+      "keywords": "",
+      "language": "auto",
+      "mode": "status",
+      "open_browser": true,
+      "reply_intent": "helpful and curious, add genuine value",
+      "topics": ""
+    }
+  },
+  "tw_auth": {
+    "name": "tw_auth",
+    "description": "Twitter Lead Agent — Authentication and Account Manager v2. Fixed: uses authenticated kv_get for session reads — bootstraps API token from extella_api_token KV key (stored via MCP, readable without auth), then uses that token for tw_session_* reads (stored by Flask with auth token). This fixes the nested expert KV context issue where unauthenticated kv_get couldn't read Flask-stored sessions. Parameters: action — add/validate/list/switch/set_role/remove/get_pool/update_health/get_credentials; username; auth_token; ct0; mode; account_id; health_delta; db_path_key; extella_token_key",
+    "kwargs": {
+      "account_id": "",
+      "action": "list",
+      "auth_token": "",
+      "ct0": "",
+      "db_path_key": "tw_db_path",
+      "extella_token_key": "extella_api_token",
+      "gologin_profile_id": "",
+      "gologin_token_key": "tw_gologin_token",
+      "health_delta": 0,
+      "mode": "direct",
+      "role_discovery": true,
+      "role_posting": true,
+      "username": ""
+    }
+  },
+  "tw_data": {
+    "name": "tw_data",
+    "description": "Twitter Lead Agent — Database Layer. Manages the local SQLite database: init (creates 9 tables with WAL mode, indexes, defaults), migrate (schema versioning), backup (timestamped copy), export_schema (DDL to SQL file), get_setting/set_setting (settings CRUD), vacuum (optimize), info (table stats). Saves db_path to KV Store automatically on init. Parameters: action — init/migrate/backup/export_schema/get_setting/set_setting/vacuum/info; setting_key — key for get_setting/set_setting; setting_value — value for set_setting; db_path_key — KV Store key holding the DB path (default tw_db_path)",
+    "kwargs": {
+      "action": "init",
+      "db_path_key": "tw_db_path",
+      "setting_key": "",
+      "setting_value": ""
+    }
+  },
+  "tw_debug": {
+    "name": "tw_debug",
+    "description": "Twitter Lead Agent — Debug and Diagnostics Expert. Reads server logs, checks account sessions, analyzes DB state, and returns full diagnostics. Can be called by the agent directly to inspect system state without user copy-pasting. Parameters: action — logs/session_check/diagnostics/db_info/relink_direct; lines — number of log lines to return (default 200); account_id — specific account for session_check; server_url — Flask server URL (default localhost:7842); db_path_key — KV key for SQLite path",
+    "kwargs": {
+      "account_id": "",
+      "action": "diagnostics",
+      "db_path_key": "tw_db_path",
+      "lines": 200,
+      "server_url": "http://127.0.0.1:7842"
+    }
+  },
+  "tw_discover": {
+    "name": "tw_discover",
+    "description": "Twitter Lead Agent — Profile Discovery v6.3 (page.route() sync interception). Fixed: replaced page.on('response') with page.route() for SearchTimeline — synchronous interception avoids async callback timing issues. GraphQL People Search + user_timeline enrichment. Parameters: user_description (primary); keywords (legacy); limit; min_followers/max_followers; lang; topics; dry_run; flask_port; db_path_key; extella_token_key",
+    "kwargs": {
+      "db_path_key": "tw_db_path",
+      "dry_run": false,
+      "extella_token_key": "extella_api_token",
+      "flask_port": 7842,
+      "keywords": "",
+      "lang": "en",
+      "limit": 10,
+      "max_followers": 0,
+      "min_followers": 0,
+      "topics": "",
+      "user_description": ""
+    }
+  },
+  "tw_generate": {
+    "name": "tw_generate",
+    "description": "Twitter Lead Agent — AI Reply Generator. Generates contextual Twitter replies using multi-provider AI with fallback chain. Two modes: single (one reply per post using profile context + reply intent) and followup (continue conversation with history). Auto-detects post language or enforces English. Providers: extella (Extella native AI), openai (GPT-4o), anthropic (Claude), groq (free). Parameters: mode — single/followup; post_id — tweet ID from posts table; profile_id — profile ID for context; reply_intent — tone and goal description; conversation_history — JSON array of {role, content} for followup mode; language — auto/en; ai_provider — extella/openai/anthropic/groq; ai_key_name — KV key for chosen provider API key; dry_run — return prompt without calling AI; db_path_key — KV key for SQLite; extella_token_key — KV key for Extella API token",
+    "kwargs": {
+      "ai_key_name": "",
+      "ai_provider": "extella",
+      "conversation_history": "[]",
+      "db_path_key": "tw_db_path",
+      "dry_run": false,
+      "extella_token_key": "extella_api_token",
+      "language": "auto",
+      "mode": "single",
+      "post_id": "",
+      "profile_id": "",
+      "reply_intent": "helpful and curious, add value to conversation"
+    }
+  },
+  "tw_monitor": {
+    "name": "tw_monitor",
+    "description": "Twitter Lead Agent — Conversation Monitor v3 (Flask credentials proxy + Playwright). Calls localhost:7842/api/credentials/pool — same fix as tw_discover/tw_posts. Chrome TLS for reply checking. Parameters: action — check/report/export/update_analytics; account_id; max_conversation_depth; auto_generate_followup; flask_port; db_path_key; extella_token_key",
+    "kwargs": {
+      "account_id": "",
+      "action": "report",
+      "auto_generate_followup": true,
+      "db_path_key": "tw_db_path",
+      "extella_token_key": "extella_api_token",
+      "flask_port": 7842,
+      "max_conversation_depth": 5
+    }
+  },
+  "tw_post": {
+    "name": "tw_post",
+    "description": "Twitter Lead Agent — Reply Poster v2 (Flask credentials proxy). Calls localhost:7842/api/credentials/<id> instead of nested run_expert(tw_auth, get_credentials) — bypasses KV auth issue. Playwright browser automation with human-like delays, rate limiting, dry-run mode. Parameters: task_id; account_id; proxy_mode (direct/gologin); dry_run; gologin_token_key; flask_port; db_path_key; extella_token_key",
+    "kwargs": {
+      "account_id": "",
+      "db_path_key": "tw_db_path",
+      "dry_run": false,
+      "extella_token_key": "extella_api_token",
+      "flask_port": 7842,
+      "gologin_token_key": "tw_gologin_token",
+      "proxy_mode": "direct",
+      "task_id": ""
+    }
+  },
+  "tw_posts": {
+    "name": "tw_posts",
+    "description": "Twitter Lead Agent — Posts Fetcher v4 (natural language + Flask credentials proxy + Playwright). Accepts content_description (natural language) → tw_query_expand → topic filters. Flask credentials proxy for reliable session access. Parameters: profile_ids; posts_per_profile; content_description — natural language (primary); topics — comma-separated (legacy); min_likes; since_hours; flask_port; db_path_key; extella_token_key",
+    "kwargs": {
+      "content_description": "",
+      "db_path_key": "tw_db_path",
+      "dry_run": false,
+      "extella_token_key": "extella_api_token",
+      "flask_port": 7842,
+      "min_likes": 0,
+      "posts_per_profile": 10,
+      "profile_ids": "",
+      "since_hours": 168,
+      "topics": ""
+    }
+  },
+  "tw_queue": {
+    "name": "tw_queue",
+    "description": "Twitter Lead Agent — Task Queue Manager. Manages the reply task lifecycle with strict FSM (Finite State Machine) transitions: pending→approved/rejected, approved→posting→posted/failed, failed→pending (retry). Supports batch creation from tw_generate results, individual and bulk approve/reject, edit reply text, duplicate detection across all accounts, paginated listing. Parameters: action — create_batch/list/approve/reject/edit/get_stats/bulk_approve/bulk_reject/retry_failed; task_ids — comma-separated UUIDs; edited_reply — new reply text for edit action; account_id — account for create_batch; post_ids — comma-separated post IDs for create_batch; reply_intent — intent for batch creation; status_filter — pending/approved/rejected/posting/posted/failed; page/page_size — pagination; db_path_key — KV key for SQLite; extella_token_key — KV key for Extella API token",
+    "kwargs": {
+      "account_id": "",
+      "action": "get_stats",
+      "db_path_key": "tw_db_path",
+      "edited_reply": "",
+      "extella_token_key": "extella_api_token",
+      "page": 1,
+      "page_size": 20,
+      "post_ids": "",
+      "reply_intent": "helpful and curious",
+      "status_filter": "pending",
+      "task_ids": ""
+    }
+  },
+  "tw_query_expand": {
+    "name": "tw_query_expand",
+    "description": "Twitter Lead Agent — LLM Query Expansion. Reads ai_provider from Settings. Same fallback chain as tw_generate: tries configured provider first, then falls to rule_based. For extella/openai — passes api_key_name='openai_api_key' to openai_chat. For groq — reads groq_api_key. For anthropic — reads anthropic_api_key. Parameters: user_description; mode — profiles/posts; flask_port; db_path_key; extella_token_key",
+    "kwargs": {
+      "db_path_key": "tw_db_path",
+      "extella_token_key": "extella_api_token",
+      "flask_port": 7842,
+      "mode": "profiles",
+      "user_description": ""
+    }
+  },
+  "tw_server": {
+    "name": "tw_server",
+    "description": "Twitter Lead Agent — Web Server v9 (fixed credentials proxy). New endpoint GET /api/credentials/pool: Flask reads tw_session_* from KV with auth token and returns plaintext credentials to local experts — bypasses nested expert KV auth issue permanently. Data experts (tw_discover, tw_posts, tw_monitor) call localhost:7842 directly instead of run_expert(tw_auth, get_pool). All other fixes from v8 preserved.",
+    "kwargs": {
+      "action": "status",
+      "api_token": "",
+      "db_path_key": "tw_db_path",
+      "extella_token_key": "extella_api_token",
+      "open_browser": true,
+      "port": 7842
+    }
+  },
+  "tw_test_suite": {
+    "name": "tw_test_suite",
+    "description": "Automated test suite for Twitter Lead Agent. Tests all 10 experts across 40+ tests using direct SQLite access and HTTP calls to the Flask server — no nested expert API calls needed. Covers: DB schema integrity, settings CRUD, auth account lifecycle with circuit breaker, server all endpoints (GET/POST/PATCH/DELETE), AI reply generation, queue FSM transitions, monitoring, workflow state, analytics. Provides detailed pass/fail report per category. Parameters: categories — comma-separated categories to run or 'all'; stop_on_fail — halt at first failure; db_path — direct path to SQLite DB (auto-detected if empty)",
+    "kwargs": {
+      "categories": "all",
+      "db_path": "",
+      "stop_on_fail": false
+    }
+  },
+  "tw_fix_playwright_browser": {
+    "name": "tw_fix_playwright_browser",
+    "description": "One-time fix for Twitter Lead Agent: installs Playwright Chromium browser binary and patches the tw_auth_playwright.py script to always auto-install Chromium before launching. Run this once when getting 'Executable doesn't exist' error. Parameters: none required",
+    "kwargs": {}
+  },
+  "tw_install_playwright": {
+    "name": "tw_install_playwright",
+    "description": "One-time setup: installs playwright Python package and downloads Chromium browser binary. Run once if getting 'No module named playwright' errors in tw_discover, tw_posts, tw_monitor, or tw_test_browser_http.",
+    "kwargs": {}
+  },
+  "tw_discover_debug": {
+    "name": "tw_discover_debug",
+    "description": "Diagnostic v2: tests search/tweets approach — finds active accounts by searching tweet content, extracts user objects with real follower data directly from tweet author fields.",
+    "kwargs": {
+      "flask_port": 7842,
+      "query": "venture capital"
+    }
+  },
+  "tw_search_debug": {
+    "name": "tw_search_debug",
+    "description": "Diagnostic v2: captures raw GraphQL SearchTimeline response to understand actual JSON structure for user extraction.",
+    "kwargs": {
+      "flask_port": 7842,
+      "query": "venture capital"
+    }
+  },
+  "tw_api_probe": {
+    "name": "tw_api_probe",
+    "description": "Diagnostic: probes multiple Twitter API endpoints to find what actually works for user search. Tests v1.1 users/search, search/tweets, and GraphQL user lookup. Returns raw responses for analysis.",
+    "kwargs": {
+      "extella_token_key": "extella_api_token",
+      "flask_port": 7842,
+      "query": "AI"
+    }
+  },
+  "tw_probe_lookup": {
+    "name": "tw_probe_lookup",
+    "description": "Diagnostic: tests users/lookup.json batch endpoint vs individual users/show.json to find which works for getting real follower counts after typeahead search.",
+    "kwargs": {
+      "flask_port": 7842,
+      "test_usernames": "elonmusk,naval"
+    }
+  },
+  "tw_test_browser_http": {
+    "name": "tw_test_browser_http",
+    "description": "Test expert v4: verifies Twitter session validity and Chrome TLS bypass. Tries multiple API endpoints since settings.json returns 404 (deprecated). Tests: home_timeline, verify_credentials, user_timeline. Also tests Python/OpenSSL vs Playwright/Chrome. Parameters: account_id; flask_port (default 7842); db_path_key; extella_token_key",
+    "kwargs": {
+      "account_id": "",
+      "db_path_key": "tw_db_path",
+      "extella_token_key": "extella_api_token",
+      "flask_port": 7842
+    }
+  },
+  "tw_env_debug": {
+    "name": "tw_env_debug",
+    "description": "Diagnostic: shows Python environment info (sys.executable, sys.path, installed packages) to understand why playwright import fails. One-time debugging tool.",
+    "kwargs": {}
+  },
+  "tw_extella_ai_probe": {
+    "name": "tw_extella_ai_probe",
+    "description": "Diagnostic: probes Extella's internal AI endpoints to find what's available for LLM calls without user's own OpenAI key",
+    "kwargs": {
+      "extella_token_key": "extella_api_token"
+    }
+  },
+  "tw_patch_v9": {
+    "name": "tw_patch_v9",
+    "description": "One-time patch for tw_server: adds /api/credentials/pool and /api/credentials/<aid> endpoints directly to server.py on disk. These endpoints let local experts get Twitter session credentials via Flask (which has auth token), bypassing nested expert KV auth issue permanently. Also restarts the server.",
+    "kwargs": {}
+  },
+  "tw_patch_validate": {
+    "name": "tw_patch_validate",
+    "description": "One-time patch for Twitter Lead Agent server: fixes validate endpoint to work inline (no nested expert call), fixes workflow/state missing status field, fixes run_expert None handling. Writes patch directly to server.py and restarts the Flask server. Run once after applying.",
+    "kwargs": {}
+  },
+  "tw_patch_validate_endpoint": {
+    "name": "tw_patch_validate_endpoint",
+    "description": "One-time patch: replaces _check_twitter_session in server.py to use working endpoints (home_timeline) instead of deprecated account/settings.json (returns 404). Handles compact formatting from SERVER_CODE string. Restarts server.",
+    "kwargs": {}
+  },
+  "tw_ui_v2_patch": {
+    "name": "tw_ui_v2_patch",
+    "description": "One-time patch: adds /api/run/smart_discover and /api/run/posts_for_profile Flask endpoints + writes new index.html with 2-step Discovery UX (natural language textareas + AI keyword preview chips + auto-fetch posts + Fetch Posts button per profile row). Restarts server.",
+    "kwargs": {}
+  },
+  "tw_project_tracker": {
+    "name": "tw_project_tracker",
+    "description": "Twitter Lead Agent project task tracker and execution orchestrator. Decomposes the full 10-expert build plan into trackable tasks with dependency resolution and sequential execution management. Parameters: action — init/list/next/start/done/fail/status/reset; task_id — task ID for state transitions (e.g. P1T1); notes — completion notes or error details; db_path — override default path to project SQLite DB",
+    "kwargs": {
+      "action": "status",
+      "db_path": "",
+      "notes": "",
+      "task_id": ""
+    }
+  }
+}

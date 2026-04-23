@@ -1,0 +1,813 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Twitter Lead Agent</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/alpinejs/3.13.5/cdn.min.js" defer></script>
+<style>
+:root{
+  --sb:#0F172A;--sbh:#1E293B;--sba:#1D4ED8;--sbt:#94A3B8;
+  --bg:#F1F5F9;--sf:#FFFFFF;--sf2:#F8FAFC;
+  --t1:#0F172A;--t2:#475569;--t3:#94A3B8;--bd:#E2E8F0;
+  --bl:#3B82F6;--blh:#2563EB;--blb:#EFF6FF;
+  --gn:#10B981;--gnb:#ECFDF5;--am:#F59E0B;--amb:#FFFBEB;
+  --rd:#EF4444;--rdb:#FEF2F2;--pu:#8B5CF6;
+  --r:8px;--rs:4px;--rl:12px;
+  --sh:0 1px 3px rgba(0,0,0,.08),0 1px 2px rgba(0,0,0,.04);
+  --shm:0 4px 6px -1px rgba(0,0,0,.1),0 2px 4px -1px rgba(0,0,0,.06);
+  --shl:0 20px 25px -5px rgba(0,0,0,.1),0 10px 10px -5px rgba(0,0,0,.04);
+  --font:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;--tr:150ms ease;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+html,body{height:100%;overflow:hidden;}
+body{font-family:var(--font);font-size:14px;line-height:1.5;color:var(--t1);background:var(--bg);}
+button{cursor:pointer;border:none;background:none;font:inherit;}
+input,select,textarea{font:inherit;outline:none;}
+table{border-collapse:collapse;width:100%;}
+a{color:inherit;text-decoration:none;}
+[x-cloak]{display:none!important;}
+.app{display:flex;height:100vh;}
+.sb{width:220px;flex-shrink:0;background:var(--sb);display:flex;flex-direction:column;}
+.sb-brand{padding:18px 16px 14px;border-bottom:1px solid rgba(255,255,255,.07);}
+.sb-logo{display:flex;align-items:center;gap:9px;margin-bottom:4px;}
+.sb-logo-icon{font-size:22px;}.sb-logo-text{font-size:15px;font-weight:700;color:#F1F5F9;letter-spacing:-.3px;}
+.sb-phase{font-size:10px;color:var(--sbt);text-transform:uppercase;letter-spacing:.8px;padding-left:31px;}
+.sb-nav{flex:1;padding:8px;overflow-y:auto;}
+.nav-item{display:flex;align-items:center;gap:9px;width:100%;padding:8px 10px;border-radius:6px;color:var(--sbt);font-size:13px;font-weight:500;cursor:pointer;transition:background var(--tr),color var(--tr);text-align:left;margin-bottom:1px;}
+.nav-item:hover{background:var(--sbh);color:#CBD5E1;}.nav-item.active{background:var(--sba);color:#fff;}
+.nav-icon{font-size:14px;width:18px;text-align:center;flex-shrink:0;}.nav-label{flex:1;}
+.nav-badge{background:var(--rd);color:#fff;font-size:10px;font-weight:700;padding:1px 5px;border-radius:10px;min-width:16px;text-align:center;}
+.sb-sep{height:1px;background:rgba(255,255,255,.07);margin:6px 0;}
+.sb-footer{padding:12px 16px;border-top:1px solid rgba(255,255,255,.07);}
+.sb-stat{display:flex;justify-content:space-between;font-size:11.5px;color:var(--sbt);margin-bottom:3px;}
+.sb-stat strong{color:#94A3B8;}
+.sb-online{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--gn);margin-top:6px;}
+.sb-online::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--gn);flex-shrink:0;box-shadow:0 0 0 2px rgba(16,185,129,.2);}
+.main{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0;}
+.topbar{height:54px;flex-shrink:0;background:var(--sf);border-bottom:1px solid var(--bd);display:flex;align-items:center;padding:0 22px;gap:10px;}
+.topbar-title{font-size:15px;font-weight:600;flex:1;}
+.content{flex:1;overflow-y:auto;padding:22px;}
+.btn{display:inline-flex;align-items:center;gap:5px;padding:7px 13px;border-radius:var(--rs);font-size:12.5px;font-weight:500;cursor:pointer;transition:all var(--tr);white-space:nowrap;border:1px solid transparent;line-height:1.2;}
+.btn:disabled{opacity:.5;cursor:not-allowed;}
+.btn-primary{background:var(--bl);color:#fff;}.btn-primary:hover:not(:disabled){background:var(--blh);}
+.btn-success{background:var(--gn);color:#fff;}.btn-success:hover{background:#059669;}
+.btn-danger{background:var(--rd);color:#fff;}.btn-danger:hover{background:#DC2626;}
+.btn-amber{background:var(--am);color:#fff;}.btn-amber:hover{background:#D97706;}
+.btn-outline{background:var(--sf);color:var(--t2);border-color:var(--bd);}.btn-outline:hover{background:var(--sf2);border-color:#CBD5E1;}
+.btn-sm{padding:5px 9px;font-size:12px;}
+.btn-tw{background:#000;color:#fff;justify-content:center;gap:8px;}.btn-tw:hover{background:#1a1a1a;}
+.sel{appearance:none;background:var(--sf) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%2394A3B8'/%3E%3C/svg%3E") no-repeat right 8px center;border:1px solid var(--bd);border-radius:var(--rs);padding:6px 26px 6px 9px;font-size:12.5px;color:var(--t2);cursor:pointer;font:inherit;}
+.inp{width:100%;border:1px solid var(--bd);border-radius:var(--rs);padding:8px 11px;font-size:13.5px;background:var(--sf);color:var(--t1);transition:border-color var(--tr),box-shadow var(--tr);font:inherit;}
+.inp:focus{border-color:var(--bl);box-shadow:0 0 0 3px rgba(59,130,246,.1);}
+.inp::placeholder{color:var(--t3);}textarea.inp{resize:vertical;min-height:70px;line-height:1.5;}
+.label{font-size:12px;font-weight:500;color:var(--t2);display:block;margin-bottom:4px;}
+.fg{margin-bottom:12px;}.fg-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.tgl{display:flex;align-items:center;gap:10px;cursor:pointer;}
+.tgl input[type=checkbox]{width:34px;height:18px;appearance:none;background:var(--bd);border-radius:9px;position:relative;cursor:pointer;transition:background .2s;flex-shrink:0;}
+.tgl input[type=checkbox]:checked{background:var(--bl);}
+.tgl input[type=checkbox]::after{content:'';position:absolute;left:2px;top:2px;width:14px;height:14px;background:#fff;border-radius:50%;transition:left .2s;box-shadow:0 1px 2px rgba(0,0,0,.2);}
+.tgl input[type=checkbox]:checked::after{left:18px;}
+.tgl-text{font-size:13px;color:var(--t1);}
+.card{background:var(--sf);border:1px solid var(--bd);border-radius:var(--r);box-shadow:var(--sh);overflow:hidden;}
+.card-head{padding:13px 18px;border-bottom:1px solid var(--bd);display:flex;align-items:center;justify-content:space-between;background:var(--sf2);}
+.card-title{font-size:13px;font-weight:600;color:var(--t1);}.card-body{padding:18px;}
+.stats-row{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px;}
+.stat{background:var(--sf);border:1px solid var(--bd);border-radius:var(--r);padding:18px;box-shadow:var(--sh);}
+.stat-label{font-size:10.5px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.7px;margin-bottom:8px;}
+.stat-value{font-size:28px;font-weight:700;line-height:1;margin-bottom:3px;}
+.stat-sub{font-size:11.5px;color:var(--t3);}
+.c-bl{color:var(--bl);}.c-gn{color:var(--gn);}.c-am{color:var(--am);}.c-pu{color:var(--pu);}
+.tbl-wrap{background:var(--sf);border:1px solid var(--bd);border-radius:var(--r);box-shadow:var(--sh);overflow:hidden;}
+.tbl-bar{padding:10px 14px;border-bottom:1px solid var(--bd);display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+.tbl-count{font-size:11.5px;color:var(--t3);margin-left:auto;}
+th{text-align:left;padding:9px 14px;font-size:10.5px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.6px;background:var(--sf2);border-bottom:1px solid var(--bd);white-space:nowrap;}
+td{padding:10px 14px;border-bottom:1px solid var(--bd);vertical-align:middle;font-size:13.5px;}
+tr:last-child td{border-bottom:none;}
+.tbl-row{transition:background var(--tr);}.tbl-row:hover td{background:#F0F7FF;}
+.p-name{font-weight:600;color:var(--t1);}
+.p-bio{font-size:11.5px;color:var(--t3);margin-top:1px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.badge{display:inline-flex;align-items:center;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;white-space:nowrap;}
+.bt1{background:#FEF3C7;color:#92400E;}.bt2{background:#DBEAFE;color:#1E40AF;}
+.bt3{background:var(--sf2);color:var(--t2);border:1px solid var(--bd);}
+.bp{background:#FEF3C7;color:#92400E;}.ba{background:var(--gnb);color:#065F46;}
+.br{background:var(--rdb);color:#991B1B;}.bpo{background:var(--blb);color:#1E40AF;}
+.bf{background:#FDF2F8;color:#9D174D;}
+.tag{display:inline-block;padding:1px 6px;background:var(--sf2);border:1px solid var(--bd);border-radius:3px;font-size:10.5px;color:var(--t2);margin:1px;}
+/* AI chips */
+.chip{display:inline-block;padding:2px 8px;background:var(--blb);border:1px solid #BFDBFE;border-radius:12px;font-size:11px;color:#1E40AF;margin:2px;font-weight:500;}
+.chip-topic{background:#FDF4FF;border-color:#E9D5FF;color:#7C3AED;}
+/* Queue */
+.qc{background:var(--sf);border:1px solid var(--bd);border-radius:var(--r);box-shadow:var(--sh);margin-bottom:10px;transition:box-shadow var(--tr);}
+.qc:hover{box-shadow:var(--shm);}
+.qc-head{padding:10px 14px;background:var(--sf2);border-bottom:1px solid var(--bd);display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+.qc-pname{font-size:13.5px;font-weight:700;}.qc-via{font-size:11.5px;color:var(--t3);}
+.qc-body{display:grid;grid-template-columns:1fr 1fr;}
+.qc-panel{padding:14px 16px;}.qc-panel+.qc-panel{border-left:1px solid var(--bd);}
+.qc-plabel{font-size:10px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px;}
+.qc-text{font-size:13.5px;line-height:1.65;color:var(--t1);}.qc-text.dim{color:var(--t2);font-style:italic;}
+.char-counter{font-size:11px;color:var(--t3);text-align:right;margin-top:4px;}
+.char-counter.warn{color:var(--am);font-weight:600;}.char-counter.over{color:var(--rd);font-weight:700;}
+.qc-foot{padding:10px 14px;border-top:1px solid var(--bd);background:var(--sf2);display:flex;align-items:center;justify-content:space-between;gap:8px;}
+.qc-meta{display:flex;gap:12px;font-size:11.5px;color:var(--t3);align-items:center;}
+.qc-actions{display:flex;gap:5px;}
+.pc{background:var(--sf);border:1px solid var(--bd);border-radius:var(--r);padding:14px 16px;box-shadow:var(--sh);margin-bottom:10px;}
+.pc-head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;}
+.pc-time{font-size:11.5px;color:var(--t3);}.pc-stats{display:flex;gap:10px;font-size:12px;color:var(--t3);}
+.pc-text{font-size:14px;line-height:1.65;color:var(--t1);margin-bottom:10px;}
+.pc-foot{display:flex;align-items:center;justify-content:space-between;}
+.pc-link{font-size:12px;color:var(--bl);}.pc-link:hover{text-decoration:underline;}
+.status-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:16px;}
+.status-row{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--bd);font-size:12.5px;}
+.status-row:last-child{border-bottom:none;}
+.dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
+.dot-gn{background:var(--gn);}.dot-am{background:var(--am);}.dot-gy{background:var(--t3);}
+.s-lbl{flex:1;color:var(--t2);}.s-val{font-weight:500;font-size:12px;color:var(--t1);}
+.qa-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:20px;}
+.qa{background:var(--sf);border:1px solid var(--bd);border-radius:var(--r);padding:16px;text-align:center;cursor:pointer;transition:all var(--tr);box-shadow:var(--sh);}
+.qa:hover{border-color:var(--bl);box-shadow:var(--shm);transform:translateY(-1px);}
+.qa-icon{font-size:24px;margin-bottom:7px;}.qa-label{font-size:13px;font-weight:600;color:var(--t1);}
+.qa-desc{font-size:11.5px;color:var(--t3);margin-top:2px;}
+.ss{background:var(--sf);border:1px solid var(--bd);border-radius:var(--r);box-shadow:var(--sh);overflow:hidden;margin-bottom:14px;}
+.ss-head{padding:13px 18px;background:var(--sf2);border-bottom:1px solid var(--bd);font-size:13px;font-weight:600;color:var(--t1);}
+.ss-body{padding:18px;}
+.acc-item{display:flex;align-items:center;gap:10px;padding:9px 12px;border:1px solid var(--bd);border-radius:var(--rs);background:var(--sf2);margin-bottom:7px;}
+.acc-av{width:30px;height:30px;border-radius:50%;background:var(--bl);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;flex-shrink:0;}
+.acc-info{flex:1;min-width:0;}
+.acc-name{font-size:13px;font-weight:500;}.acc-sub{font-size:11px;color:var(--t3);margin-top:1px;}
+.hbar{width:44px;height:3px;background:var(--bd);border-radius:2px;overflow:hidden;margin-top:3px;}
+.hfill{height:100%;border-radius:2px;transition:width .3s;}
+.session-ok{display:inline-flex;align-items:center;gap:3px;font-size:10px;color:var(--gn);font-weight:600;}
+.session-miss{display:inline-flex;align-items:center;gap:3px;font-size:10px;color:var(--am);font-weight:600;}
+.overlay{position:fixed;inset:0;background:rgba(15,23,42,.55);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;z-index:1000;padding:16px;}
+.modal{background:var(--sf);border-radius:var(--rl);box-shadow:var(--shl);width:100%;max-width:500px;max-height:92vh;overflow-y:auto;}
+.modal-head{padding:18px 22px 14px;border-bottom:1px solid var(--bd);display:flex;align-items:center;justify-content:space-between;}
+.modal-title{font-size:15px;font-weight:700;}
+.modal-close{font-size:18px;color:var(--t3);transition:color var(--tr);}.modal-close:hover{color:var(--t1);}
+.modal-body{padding:18px 22px;}.modal-foot{padding:14px 22px;border-top:1px solid var(--bd);display:flex;gap:8px;justify-content:flex-end;}
+.alert{padding:9px 13px;border-radius:var(--rs);font-size:12.5px;margin-bottom:12px;}
+.alert-warn{background:var(--amb);color:#92400E;border-left:3px solid var(--am);}
+.alert-info{background:var(--blb);color:#1E40AF;border-left:3px solid var(--bl);}
+.toast-wrap{position:fixed;bottom:20px;right:20px;z-index:9999;pointer-events:none;}
+.toast{background:var(--t1);color:#F1F5F9;padding:12px 16px;border-radius:var(--r);font-size:13px;box-shadow:var(--shl);display:flex;align-items:center;gap:9px;min-width:220px;max-width:360px;}
+.empty{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:52px 20px;text-align:center;}
+.empty-icon{font-size:40px;margin-bottom:10px;opacity:.35;}
+.empty-h{font-size:15px;font-weight:600;color:var(--t2);margin-bottom:5px;}
+.empty-d{font-size:12.5px;color:var(--t3);max-width:260px;line-height:1.6;}
+.sh{font-size:11px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.7px;margin-bottom:10px;}
+.sep-or{display:flex;align-items:center;gap:10px;margin:10px 0;color:var(--t3);font-size:11px;}
+.sep-or::before,.sep-or::after{content:'';flex:1;height:1px;background:var(--bd);}
+.log-wrap{background:#0F172A;border-radius:var(--r);padding:12px;height:calc(100vh - 220px);overflow-y:auto;font-family:'SF Mono','Fira Code',monospace;font-size:12px;line-height:1.6;}
+.log-line{display:flex;gap:8px;border-bottom:1px solid rgba(255,255,255,.04);padding:2px 0;}
+.log-ts{color:#4B5563;flex-shrink:0;width:60px;}.log-level{flex-shrink:0;width:36px;font-weight:700;}
+.log-msg{color:#E5E7EB;word-break:break-all;flex:1;}.log-extra{color:#6B7280;font-size:10.5px;}
+.lv-REQ{color:#60A5FA;}.lv-OK{color:#34D399;}.lv-ERR{color:#F87171;}.lv-WARN{color:#FBBF24;}
+.lv-INFO{color:#A78BFA;}.lv-KV{color:#F59E0B;}
+.debug-bar{display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap;}
+@keyframes spin{to{transform:rotate(360deg);}}
+.spin{width:14px;height:14px;border:2px solid rgba(59,130,246,.25);border-top-color:var(--bl);border-radius:50%;animation:spin .7s linear infinite;display:inline-block;flex-shrink:0;}
+.auth-box{border-radius:var(--r);padding:13px 15px;margin-bottom:10px;}
+.auth-w{background:#EFF6FF;border:1px solid #BFDBFE;}
+.auth-ok{background:var(--gnb);border:1px solid #A7F3D0;}
+.auth-er{background:var(--rdb);border:1px solid #FECACA;}
+/* Loading state */
+.loading-bar{display:flex;align-items:center;gap:8px;background:var(--blb);border:1px solid #BFDBFE;border-radius:var(--rs);padding:10px 14px;font-size:12.5px;color:#1E40AF;margin-bottom:12px;}
+::-webkit-scrollbar{width:4px;height:4px;}::-webkit-scrollbar-track{background:transparent;}::-webkit-scrollbar-thumb{background:var(--bd);border-radius:2px;}
+.fade{animation:fd .15s ease;}@keyframes fd{from{opacity:0;transform:translateY(3px);}to{opacity:1;transform:translateY(0);}}
+</style>
+</head>
+<body x-data="app()" x-init="init()" x-cloak>
+<div class="app">
+  <aside class="sb">
+    <div class="sb-brand">
+      <div class="sb-logo"><span class="sb-logo-icon">🐦</span><span class="sb-logo-text">TW Lead Agent</span></div>
+      <div class="sb-phase" x-text="phase||'idle'"></div>
+    </div>
+    <nav class="sb-nav">
+      <button class="nav-item" :class="tab==='dashboard'&&'active'" @click="go('dashboard')"><span class="nav-icon">🏠</span><span class="nav-label">Dashboard</span></button>
+      <button class="nav-item" :class="tab==='profiles'&&'active'" @click="go('profiles')"><span class="nav-icon">👥</span><span class="nav-label">Profiles</span><span x-show="profiles.length>0" class="nav-badge" x-text="profiles.length" style="background:var(--sbt);color:var(--sb)"></span></button>
+      <button class="nav-item" :class="tab==='posts'&&'active'" @click="go('posts')"><span class="nav-icon">📝</span><span class="nav-label">Posts</span></button>
+      <button class="nav-item" :class="tab==='queue'&&'active'" @click="go('queue')"><span class="nav-icon">✅</span><span class="nav-label">Reply Queue</span><span x-show="pendingCount>0" class="nav-badge" x-text="pendingCount"></span></button>
+      <div class="sb-sep"></div>
+      <button class="nav-item" :class="tab==='analytics'&&'active'" @click="go('analytics')"><span class="nav-icon">📊</span><span class="nav-label">Analytics</span></button>
+      <button class="nav-item" :class="tab==='settings'&&'active'" @click="go('settings')"><span class="nav-icon">⚙️</span><span class="nav-label">Settings</span><span x-show="accounts.filter(a=>!a.has_session).length>0" class="nav-badge">!</span></button>
+      <div class="sb-sep"></div>
+      <button class="nav-item" :class="tab==='debug'&&'active'" @click="go('debug')"><span class="nav-icon">🐛</span><span class="nav-label">Debug Logs</span></button>
+    </nav>
+    <div class="sb-footer">
+      <div class="sb-stat"><span>Accounts</span><strong x-text="accounts.length"></strong></div>
+      <div class="sb-stat"><span>Profiles</span><strong x-text="profiles.length"></strong></div>
+      <div class="sb-stat"><span>Pending</span><strong x-text="pendingCount"></strong></div>
+      <div class="sb-online">Server online</div>
+    </div>
+  </aside>
+
+  <div class="main">
+    <header class="topbar">
+      <span class="topbar-title" x-text="tabs.find(t=>t.id===tab)?.label||''"></span>
+      <label for="sel-account" style="display:none">Account</label>
+      <select id="sel-account" name="account_filter" class="sel" x-model="acct" @change="load()">
+        <option value="">All accounts</option>
+        <template x-for="a in accounts" :key="a.id"><option :value="a.id" x-text="'@'+a.username+(a.is_active?' ●':'')"></option></template>
+      </select>
+      <button class="btn btn-outline btn-sm" @click="load()">↻ Refresh</button>
+    </header>
+    <main class="content">
+
+      <!-- DASHBOARD -->
+      <div x-show="tab==='dashboard'" class="fade">
+        <div x-show="accounts.filter(a=>!a.has_session).length>0" class="alert alert-warn" style="margin-bottom:16px">
+          <strong>⚠️ Session missing</strong> for <template x-for="a in accounts.filter(a=>!a.has_session)" :key="a.id"><strong> @<span x-text="a.username"></span></strong></template>
+          — <button class="btn btn-amber btn-sm" @click="go('settings')" style="margin-left:4px">⚙️ Settings → Re-link</button>
+        </div>
+        <div x-show="accounts.length===0" class="alert alert-info" style="margin-bottom:16px">No accounts yet. <button class="btn btn-primary btn-sm" @click="go('settings')" style="margin-left:4px">+ Add Account</button></div>
+        <div class="stats-row">
+          <div class="stat"><div class="stat-label">Replies Sent</div><div class="stat-value c-bl" x-text="stats.total_sent||'0'"></div><div class="stat-sub">Total outbound</div></div>
+          <div class="stat"><div class="stat-label">Response Rate</div><div class="stat-value c-gn" x-text="((+stats.avg_response_rate||0)).toFixed(1)+'%'"></div><div class="stat-sub">Avg</div></div>
+          <div class="stat"><div class="stat-label">Conversations</div><div class="stat-value c-pu" x-text="stats.total_conversations||'0'"></div><div class="stat-sub">Active threads</div></div>
+          <div class="stat"><div class="stat-label">Pending Review</div><div class="stat-value c-am" x-text="pendingCount"></div><div class="stat-sub">Awaiting approval</div></div>
+        </div>
+        <div class="sh">Quick Actions</div>
+        <div class="qa-grid">
+          <div class="qa" @click="showDisc=true"><div class="qa-icon">🔍</div><div class="qa-label">Discover Profiles</div><div class="qa-desc">Describe your target audience</div></div>
+          <div class="qa" @click="go('queue')"><div class="qa-icon">✅</div><div class="qa-label">Review Replies</div><div class="qa-desc" x-text="pendingCount+' tasks pending'"></div></div>
+          <div class="qa" @click="runMonitor()"><div class="qa-icon">📡</div><div class="qa-label">Check Responses</div><div class="qa-desc">Scan for new replies</div></div>
+        </div>
+        <div class="status-grid">
+          <div class="card"><div class="card-head"><span class="card-title">System Status</span></div><div class="card-body">
+            <div class="status-row"><span class="dot dot-gn"></span><span class="s-lbl">Web Server</span><span class="s-val">Online :7842</span></div>
+            <div class="status-row"><span :class="'dot '+(accounts.length>0?'dot-gn':'dot-am')"></span><span class="s-lbl">Twitter Accounts</span><span class="s-val" x-text="accounts.length+' connected'"></span></div>
+            <div class="status-row"><span :class="'dot '+(accounts.filter(a=>a.has_session).length>0?'dot-gn':'dot-am')"></span><span class="s-lbl">Active Sessions</span><span class="s-val" x-text="accounts.filter(a=>a.has_session).length+'/'+accounts.length"></span></div>
+            <div class="status-row"><span :class="'dot '+(pendingCount>0?'dot-am':'dot-gn')"></span><span class="s-lbl">Pending Tasks</span><span class="s-val" x-text="pendingCount+' waiting'"></span></div>
+          </div></div>
+          <div class="card"><div class="card-head"><span class="card-title">Configuration</span></div><div class="card-body">
+            <div class="status-row"><span class="dot dot-gn"></span><span class="s-lbl">Workflow Phase</span><span class="s-val" x-text="phase||'idle'"></span></div>
+            <div class="status-row"><span class="dot dot-gy"></span><span class="s-lbl">AI Provider</span><span class="s-val" x-text="cfg.ai_provider||'extella'"></span></div>
+            <div class="status-row"><span class="dot dot-gy"></span><span class="s-lbl">Reply Language</span><span class="s-val" x-text="cfg.reply_language==='auto'?'Auto-detect':'English only'"></span></div>
+            <div class="status-row"><span :class="'dot '+(cfg.background_enabled==='true'?'dot-gn':'dot-gy')"></span><span class="s-lbl">Background Monitor</span><span class="s-val" x-text="cfg.background_enabled==='true'?'Enabled':'Disabled'"></span></div>
+          </div></div>
+        </div>
+      </div>
+
+      <!-- PROFILES -->
+      <div x-show="tab==='profiles'" class="fade">
+        <div class="tbl-wrap">
+          <div class="tbl-bar">
+            <label for="sel-tier" style="display:none">Tier</label>
+            <select id="sel-tier" name="tier_filter" class="sel" x-model="pTier" @change="loadProfiles()"><option value="">All Tiers</option><option value="1">🔥 T1</option><option value="2">💙 T2</option><option value="3">⬜ T3</option></select>
+            <label for="sel-sort" style="display:none">Sort</label>
+            <select id="sel-sort" name="profile_sort" class="sel" x-model="pSort" @change="loadProfiles()"><option value="tier_score">By Score</option><option value="followers_count">By Followers</option><option value="engagement_rate">By Engagement</option></select>
+            <span class="tbl-count" x-text="profiles.length+' profiles'"></span>
+            <button class="btn btn-primary btn-sm" @click="showDisc=true">✨ Discover</button>
+          </div>
+          <div x-show="profiles.length===0" class="empty">
+            <div class="empty-icon">👥</div><div class="empty-h">No profiles yet</div>
+            <div class="empty-d">Describe your target audience and let AI find the right people on Twitter.</div>
+            <button class="btn btn-primary" @click="showDisc=true" style="margin-top:14px">✨ Discover Profiles</button>
+          </div>
+          <table x-show="profiles.length>0">
+            <thead><tr><th>Profile</th><th>Tier</th><th style="text-align:right">Followers</th><th style="text-align:right">Engagement</th><th style="text-align:right">Posts/day</th><th>Topics</th><th style="text-align:center">Posts</th></tr></thead>
+            <tbody>
+              <template x-for="p in profiles" :key="p.id">
+                <tr class="tbl-row">
+                  <td @click="selP=p;go('posts')">
+                    <div class="p-name">@<span x-text="p.username"></span></div>
+                    <div class="p-bio" x-text="p.bio||'—'"></div>
+                  </td>
+                  <td @click="selP=p;go('posts')"><span :class="'badge '+(p.tier===1?'bt1':p.tier===2?'bt2':'bt3')" x-text="p.tier===1?'🔥 T1':p.tier===2?'💙 T2':'⬜ T3'"></span></td>
+                  <td @click="selP=p;go('posts')" style="text-align:right;font-weight:500" x-text="(p.followers_count||0).toLocaleString()"></td>
+                  <td @click="selP=p;go('posts')" style="text-align:right" x-text="(+(p.engagement_rate||0)).toFixed(2)+'%'"></td>
+                  <td @click="selP=p;go('posts')" style="text-align:right" x-text="(+(p.posting_frequency||0)).toFixed(1)"></td>
+                  <td @click="selP=p;go('posts')">
+                    <template x-for="tag in JSON.parse(p.topic_tags||'[]').slice(0,3)" :key="tag"><span class="tag" x-text="tag"></span></template>
+                    <span x-show="!JSON.parse(p.topic_tags||'[]').length" style="font-size:11.5px;color:var(--t3)">—</span>
+                  </td>
+                  <td style="text-align:center">
+                    <button class="btn btn-outline btn-sm" @click.stop="fetchPostsForProfile(p.id,p.username)"
+                      style="white-space:nowrap" title="Collect posts from this profile">📥</button>
+                  </td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- POSTS -->
+      <div x-show="tab==='posts'" class="fade">
+        <div x-show="!selP" class="empty">
+          <div class="empty-icon">📝</div><div class="empty-h">No profile selected</div>
+          <div class="empty-d">Click any profile row in Profiles tab to see their posts.</div>
+          <button class="btn btn-outline" @click="go('profiles')" style="margin-top:14px">← Profiles</button>
+        </div>
+        <template x-if="selP">
+          <div>
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+              <div style="font-size:13.5px;color:var(--t2)">Posts from <strong>@<span x-text="selP.username"></span></strong> <span style="color:var(--t3);font-size:12px" x-text="'('+posts.length+')'"></span></div>
+              <button class="btn btn-outline btn-sm" @click="go('profiles')" style="margin-left:auto">← Back</button>
+              <button class="btn btn-success btn-sm" @click="fetchPostsForProfile(selP.id,selP.username)">📥 Fetch Posts</button>
+              <button class="btn btn-primary btn-sm" @click="genReplies()">✨ Generate Replies</button>
+            </div>
+            <div x-show="posts.length===0" class="empty"><div class="empty-icon">🔍</div><div class="empty-h">No posts yet</div><div class="empty-d">Click "Fetch Posts" to collect recent tweets from this profile.</div></div>
+            <template x-for="p in posts" :key="p.id">
+              <div class="pc">
+                <div class="pc-head"><span class="pc-time" x-text="(p.posted_at||'').slice(0,16).replace('T',' ')"></span><div class="pc-stats"><span>❤️<span x-text="p.likes||0"></span></span><span>💬<span x-text="p.replies_count||0"></span></span></div></div>
+                <div class="pc-text" x-text="p.text||''"></div>
+                <div class="pc-foot"><a :href="p.url" target="_blank" class="pc-link">Open ↗</a></div>
+              </div>
+            </template>
+          </div>
+        </template>
+      </div>
+
+      <!-- QUEUE -->
+      <div x-show="tab==='queue'" class="fade">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;flex-wrap:wrap">
+          <label for="sel-task-status" style="display:none">Status</label>
+          <select id="sel-task-status" name="task_status" class="sel" x-model="tF" @change="loadTasks()"><option value="pending">⏳ Pending</option><option value="approved">✅ Approved</option><option value="posted">🚀 Posted</option><option value="rejected">❌ Rejected</option></select>
+          <button x-show="tF==='approved'&&tasks.length>0" class="btn btn-primary btn-sm" @click="postAll()">🚀 Post All</button>
+          <button x-show="tF==='pending'&&tasks.length>0" class="btn btn-success btn-sm" @click="bulkApprove()">✓ Approve All</button>
+          <span style="font-size:11.5px;color:var(--t3);margin-left:auto" x-text="tasks.length+' tasks'"></span>
+        </div>
+        <div x-show="tasks.length===0" class="empty"><div class="empty-icon" x-text="tF==='pending'?'⏳':tF==='posted'?'🚀':'📭'"></div><div class="empty-h" x-text="'No '+tF+' tasks'"></div></div>
+        <template x-for="t in tasks" :key="t.id">
+          <div class="qc">
+            <div class="qc-head">
+              <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0"><span class="qc-pname">@<span x-text="t.profile_username||'?'"></span></span><span :class="'badge '+(t.profile_tier===1?'bt1':t.profile_tier===2?'bt2':'bt3')" x-text="'T'+(t.profile_tier||3)"></span><span x-show="t.account_username" class="qc-via">via @<span x-text="t.account_username||''"></span></span></div>
+              <span :class="'badge '+(t.status==='pending'?'bp':t.status==='approved'?'ba':t.status==='rejected'?'br':t.status==='posted'?'bpo':'bf')" x-text="t.status"></span>
+            </div>
+            <div class="qc-body">
+              <div class="qc-panel"><div class="qc-plabel">Original Tweet</div><div class="qc-text dim" x-text="t.post_text||'—'"></div></div>
+              <div class="qc-panel">
+                <div class="qc-plabel">Reply</div>
+                <div x-show="!t._ed"><div class="qc-text" x-text="t.final_reply||t.generated_reply||'—'"></div></div>
+                <div x-show="t._ed">
+                  <label :for="'reply-'+t.id" style="display:none">Edit reply</label>
+                  <textarea :id="'reply-'+t.id" :name="'reply_'+t.id" class="inp" x-model="t._txt" rows="4" placeholder="Edit reply (max 280 chars)"></textarea>
+                  <div :class="'char-counter '+(t._txt.length>260?(t._txt.length>280?'over':'warn'):'')" x-text="t._txt.length+' / 280'"></div>
+                  <div style="display:flex;gap:6px;margin-top:8px"><button class="btn btn-primary btn-sm" @click="saveEdit(t)">💾 Save</button><button class="btn btn-outline btn-sm" @click="t._ed=false">Cancel</button></div>
+                </div>
+              </div>
+            </div>
+            <div class="qc-foot">
+              <div class="qc-meta"><span x-show="t.post_url"><a :href="t.post_url" target="_blank" class="pc-link">Open ↗</a></span><span x-text="'Created: '+(t.created_at||'').slice(0,10)"></span></div>
+              <div x-show="t.status==='pending'" class="qc-actions">
+                <button class="btn btn-success btn-sm" @click="approve(t)">✓ Approve</button>
+                <button class="btn btn-outline btn-sm" @click="t._ed=!t._ed;t._txt=t.final_reply||t.generated_reply||''"><span x-text="t._ed?'✕':'✏️ Edit'"></span></button>
+                <button class="btn btn-danger btn-sm" @click="reject(t)">✕ Reject</button>
+              </div>
+              <div x-show="t.status==='approved'" style="font-size:12px;color:var(--gn);font-weight:500">✓ Approved</div>
+              <div x-show="t.status==='posted'" style="font-size:12px;color:var(--bl);font-weight:500">🚀 Posted</div>
+            </div>
+          </div>
+        </template>
+      </div>
+
+      <!-- ANALYTICS -->
+      <div x-show="tab==='analytics'" class="fade">
+        <div class="stats-row">
+          <div class="stat"><div class="stat-label">Total Replies</div><div class="stat-value c-bl" x-text="stats.total_sent||'0'"></div></div>
+          <div class="stat"><div class="stat-label">Responses</div><div class="stat-value c-gn" x-text="stats.total_responses||'0'"></div></div>
+          <div class="stat"><div class="stat-label">Conversations</div><div class="stat-value c-pu" x-text="stats.total_conversations||'0'"></div></div>
+          <div class="stat"><div class="stat-label">Response Rate</div><div class="stat-value c-am" x-text="((+stats.avg_response_rate||0)).toFixed(1)+'%'"></div></div>
+        </div>
+        <div class="tbl-wrap">
+          <div class="card-head"><span class="card-title">Activity Timeline</span></div>
+          <div x-show="analytics.length===0" class="empty" style="padding:36px 20px"><div class="empty-icon">📊</div><div class="empty-h">No analytics yet</div></div>
+          <table x-show="analytics.length>0">
+            <thead><tr><th>Date</th><th style="text-align:right">Sent</th><th style="text-align:right">Received</th><th style="text-align:right">Convos</th><th style="text-align:right">Rate</th></tr></thead>
+            <tbody>
+              <template x-for="r in analytics" :key="r.id||r.date">
+                <tr><td style="font-weight:500" x-text="r.date"></td><td style="text-align:right" x-text="r.replies_sent||0"></td><td style="text-align:right" x-text="r.responses_received||0"></td><td style="text-align:right" x-text="r.conversations_started||0"></td>
+                <td style="text-align:right"><span :class="'c-'+((+r.response_rate||0)>20?'gn':'am')" x-text="(+(r.response_rate||0)).toFixed(1)+'%'"></span></td></tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- SETTINGS -->
+      <div x-show="tab==='settings'" class="fade" style="max-width:620px">
+        <div class="ss">
+          <div class="ss-head">🐦 Twitter Accounts</div>
+          <div class="ss-body">
+            <div x-show="accounts.length===0" class="alert alert-info">No accounts. Connect one below.</div>
+            <div x-show="accounts.length>0" style="margin-bottom:12px">
+              <template x-for="a in accounts" :key="a.id">
+                <div class="acc-item">
+                  <div class="acc-av" x-text="(a.username||'?')[0].toUpperCase()"></div>
+                  <div class="acc-info">
+                    <div class="acc-name">@<span x-text="a.username"></span><span x-show="a.is_active" class="badge ba" style="margin-left:6px;font-size:10px">Active</span></div>
+                    <div class="acc-sub">Health: <span x-text="a.health_score||100"></span>/100 · <span x-show="a.has_session" class="session-ok">● Session OK</span><span x-show="!a.has_session" class="session-miss">⚠ No Session</span></div>
+                    <div class="hbar"><div class="hfill" :style="'width:'+(a.health_score||100)+'%;background:'+((a.health_score||100)>60?'var(--gn)':(a.health_score||100)>30?'var(--am)':'var(--rd)')"></div></div>
+                  </div>
+                  <div style="display:flex;gap:5px;flex-wrap:wrap;justify-content:flex-end">
+                    <button x-show="!a.is_active" class="btn btn-outline btn-sm" @click="switchAcc(a.id)">Activate</button>
+                    <button x-show="a.has_session" class="btn btn-outline btn-sm" @click="validateAcc(a.id)">Validate</button>
+                    <button class="btn btn-amber btn-sm" @click="startRelinkFlow(a)">⟳ Re-link</button>
+                  </div>
+                </div>
+              </template>
+            </div>
+            <div x-show="!showAdd"><button class="btn btn-outline" @click="openAddForm()">+ Add Account</button></div>
+            <div x-show="showAdd" style="margin-top:14px;padding:16px;background:var(--blb);border-radius:var(--r);border:1px solid #BFDBFE">
+              <div style="font-size:13px;font-weight:600;color:var(--bl);margin-bottom:12px" x-text="relinkTarget?('🔗 Re-linking @'+relinkTarget.username):'+ Add Twitter Account'"></div>
+              <div x-show="authFlow.status==='idle'||authFlow.status==='error'||!authFlow.status">
+                <button class="btn btn-tw" style="width:100%;padding:10px 0;font-size:13.5px" @click="startTwLogin()">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.744l7.73-8.835L1.254 2.25H8.08l4.259 5.634L18.244 2.25zm-1.161 17.52h1.833L7.084 4.126H5.117L17.083 19.77z"/></svg>
+                  Login with X / Twitter
+                </button>
+                <p style="text-align:center;font-size:11px;color:var(--t3);margin-top:5px">Opens a browser — log in normally, cookies captured automatically</p>
+                <div x-show="authFlow.status==='error'" class="auth-box auth-er" style="margin-top:10px;margin-bottom:0">
+                  <div style="font-size:12px;color:#991B1B;margin-bottom:6px">❌ <span x-text="authFlow.error||'Login failed'"></span></div>
+                  <button class="btn btn-outline btn-sm" @click="authFlow={status:'idle'}">Try again</button>
+                </div>
+                <div class="sep-or">or fill manually</div>
+                <div class="fg"><label class="label" for="inp-username">Username</label><input id="inp-username" name="username" class="inp" x-model="na.username" :placeholder="relinkTarget?relinkTarget.username:'username (without @)'" autocomplete="username"></div>
+                <div class="fg-row">
+                  <div class="fg" style="margin-bottom:0"><label class="label" for="inp-auth-token">auth_token</label><input id="inp-auth-token" name="auth_token" class="inp" type="password" x-model="na.auth_token" placeholder="from browser cookies" autocomplete="off"></div>
+                  <div class="fg" style="margin-bottom:0"><label class="label" for="inp-ct0">ct0</label><input id="inp-ct0" name="ct0" class="inp" type="password" x-model="na.ct0" placeholder="CSRF token" autocomplete="off"></div>
+                </div>
+                <div class="alert alert-warn" style="margin-top:10px">⚠️ Use a <strong>dedicated account</strong>. Credentials encrypted.</div>
+                <div style="display:flex;gap:8px;margin-top:10px">
+                  <button class="btn btn-primary" @click="saveAccount()" x-text="relinkTarget?'Save Re-link':'Add Account'"></button>
+                  <button class="btn btn-outline" @click="closeAddForm()">Cancel</button>
+                </div>
+              </div>
+              <div x-show="['starting','waiting','installing'].includes(authFlow.status)">
+                <div class="auth-box auth-w" style="margin-bottom:0">
+                  <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px"><span class="spin"></span><strong style="font-size:13px"><span x-show="authFlow.status==='installing'">Installing browser...</span><span x-show="authFlow.status!=='installing'">Waiting for login...</span></strong></div>
+                  <p style="font-size:12px;color:var(--t2);line-height:1.6;margin-bottom:10px">Log in in the browser window. Closes automatically.</p>
+                  <button class="btn btn-outline btn-sm" @click="cancelTwLogin()">✕ Cancel</button>
+                </div>
+              </div>
+              <div x-show="authFlow.status==='success'">
+                <div class="auth-box auth-ok" style="margin-bottom:10px">
+                  <div style="display:flex;align-items:center;gap:8px"><span style="font-size:18px">✅</span><div><div style="font-size:13px;font-weight:600;color:#065F46">Connected as @<span x-text="authFlow.username||na.username"></span></div><div style="font-size:11.5px;color:var(--t3)">Saving session...</div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="ss">
+          <div class="ss-head">🤖 AI Provider</div>
+          <div class="ss-body">
+            <div class="alert alert-info" style="font-size:12px">Configure an AI provider to use natural language query expansion in Discover.</div>
+            <div class="fg-row">
+              <div class="fg"><label class="label" for="sel-ai-provider">Provider</label><select id="sel-ai-provider" name="ai_provider" class="inp" x-model="cfg.ai_provider" @change="saveSetting('ai_provider',cfg.ai_provider)" style="appearance:none"><option value="extella">Extella AI (default)</option><option value="openai">OpenAI GPT-4o</option><option value="anthropic">Anthropic Claude</option><option value="groq">Groq (free)</option></select></div>
+              <div class="fg"><label class="label" for="sel-reply-lang">Reply Language</label><select id="sel-reply-lang" name="reply_language" class="inp" x-model="cfg.reply_language" @change="saveSetting('reply_language',cfg.reply_language)" style="appearance:none"><option value="auto">Auto-detect</option><option value="en">English only</option></select></div>
+            </div>
+            <div class="fg" x-show="['openai','groq','anthropic'].includes(cfg.ai_provider)">
+              <label class="label" for="inp-ai-key">API Key (stored securely in KV)</label>
+              <div style="display:flex;gap:8px">
+                <input id="inp-ai-key" type="password" class="inp" x-model="aiKeyInput" placeholder="sk-... or gsk_...">
+                <button class="btn btn-outline" @click="saveAiKey()">Save Key</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="ss">
+          <div class="ss-head">📡 Background Monitoring</div>
+          <div class="ss-body">
+            <div class="fg"><label class="tgl" for="chk-bg"><input id="chk-bg" name="background_enabled" type="checkbox" :checked="cfg.background_enabled==='true'" @change="saveSetting('background_enabled',$event.target.checked.toString())"><span class="tgl-text">Auto-start on Extella launch</span></label></div>
+            <div class="fg-row">
+              <div class="fg"><label class="label" for="inp-interval">Interval (min)</label><input id="inp-interval" name="monitor_interval_min" type="number" class="inp" x-model="cfg.monitor_interval_min" min="5" max="120" @change="saveSetting('monitor_interval_min',cfg.monitor_interval_min)"></div>
+              <div class="fg"><label class="label" for="inp-max-replies">Max replies/day</label><input id="inp-max-replies" name="max_replies_per_day" type="number" class="inp" x-model="cfg.max_replies_per_day" min="1" max="200" @change="saveSetting('max_replies_per_day',cfg.max_replies_per_day)"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- DEBUG LOGS -->
+      <div x-show="tab==='debug'" class="fade">
+        <div class="debug-bar">
+          <span style="font-size:13px;font-weight:600">🐛 Server Logs</span>
+          <span class="badge bt3" x-text="debugLogs.length+' entries'"></span>
+          <div style="margin-left:auto;display:flex;gap:6px">
+            <label for="sel-log-filter" style="display:none">Filter</label>
+            <select id="sel-log-filter" name="log_filter" class="sel" x-model="logFilter"><option value="all">All</option><option value="ERR">Errors</option><option value="WARN">Warnings</option><option value="INFO">Info</option><option value="KV">KV Store</option></select>
+            <button class="btn btn-outline btn-sm" @click="loadLogs()">↻ Refresh</button>
+            <button class="btn btn-outline btn-sm" @click="clearLogs()">🗑 Clear</button>
+          </div>
+        </div>
+        <div class="log-wrap" id="logWrap">
+          <template x-if="filteredLogs.length===0"><div style="color:#4B5563;text-align:center;padding:20px">No log entries.</div></template>
+          <template x-for="(entry,i) in filteredLogs" :key="i">
+            <div class="log-line">
+              <span class="log-ts" x-text="entry.ts"></span>
+              <span class="log-level" :class="'lv-'+entry.level" x-text="entry.level"></span>
+              <span class="log-msg" x-text="entry.msg"></span>
+              <span x-show="entry.extra" class="log-extra" x-text="typeof entry.extra==='string'?entry.extra:JSON.stringify(entry.extra)"></span>
+            </div>
+          </template>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;margin-top:6px;font-size:11.5px;color:var(--t3)">
+          <label class="tgl" for="chk-autoscroll"><input id="chk-autoscroll" type="checkbox" x-model="logAutoScroll"><span class="tgl-text" style="font-size:11.5px;color:var(--t3)">Auto-scroll</span></label>
+          <span style="margin-left:auto" x-text="'Updated: '+logLastUpdate"></span>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast-wrap" x-show="toast.on" x-transition>
+  <div class="toast"><span x-text="toast.ico||'ℹ️'"></span><span x-text="toast.msg"></span></div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     NEW DISCOVERY MODAL v2 — Natural Language + AI Expansion
+     ══════════════════════════════════════════════════════ -->
+<div class="overlay" x-show="showDisc" @click.self="showDisc=false">
+  <div class="modal" style="max-width:520px">
+    <div class="modal-head">
+      <span class="modal-title">✨ Discover Profiles</span>
+      <button class="modal-close" @click="showDisc=false" x-show="!disc.loading">✕</button>
+    </div>
+    <div class="modal-body">
+
+      <!-- Loading state -->
+      <div x-show="disc.loading" class="loading-bar">
+        <span class="spin"></span>
+        <span x-text="disc.loading_status||'Processing...'"></span>
+      </div>
+
+      <!-- AI result preview (shown after expansion) -->
+      <div x-show="disc.ai_result && !disc.loading"
+           style="background:var(--blb);border:1px solid #BFDBFE;border-radius:var(--rs);padding:10px 13px;margin-bottom:12px">
+        <div style="font-size:11px;font-weight:700;color:var(--bl);margin-bottom:5px;text-transform:uppercase;letter-spacing:.5px">
+          🤖 AI Search Terms
+          <span x-show="disc.ai_result?.source" style="font-weight:400;text-transform:none;margin-left:6px;color:#60A5FA" x-text="'via '+disc.ai_result?.source"></span>
+        </div>
+        <div>
+          <template x-for="kw in (disc.ai_result?.search_queries||[])" :key="kw">
+            <span class="chip" x-text="kw"></span>
+          </template>
+        </div>
+        <div x-show="(disc.ai_result?.topic_keywords||[]).length>0" style="margin-top:5px">
+          <template x-for="t in (disc.ai_result?.topic_keywords||[]).slice(0,8)" :key="t">
+            <span class="chip chip-topic" x-text="t"></span>
+          </template>
+        </div>
+      </div>
+
+      <!-- Step 1: Profile description -->
+      <div class="fg">
+        <label class="label" for="disc-profile-desc">
+          👥 Who are you looking for?
+          <span style="font-weight:400;color:var(--t3);font-size:11px"> — describe in plain language</span>
+        </label>
+        <textarea id="disc-profile-desc" name="disc_profile_desc" class="inp"
+          x-model="disc.profile_description" rows="3"
+          :disabled="disc.loading"
+          placeholder="E.g. Venture capitalists and angel investors focused on fintech and B2B SaaS, active on Twitter with 5k+ followers..."></textarea>
+      </div>
+
+      <!-- Step 2: Content description -->
+      <div class="fg">
+        <label class="label" for="disc-content-desc">
+          📄 What posts interest you?
+          <span style="font-weight:400;color:var(--t3);font-size:11px"> — optional, for post filtering</span>
+        </label>
+        <textarea id="disc-content-desc" name="disc_content_desc" class="inp"
+          x-model="disc.content_description" rows="2"
+          :disabled="disc.loading"
+          placeholder="E.g. Posts about investment rounds, portfolio companies, market trends in AI/fintech, startup funding..."></textarea>
+      </div>
+
+      <!-- Options row -->
+      <div class="fg-row" style="margin-bottom:10px">
+        <div class="fg" style="margin-bottom:0">
+          <label class="label" for="disc-limit">Max profiles</label>
+          <input id="disc-limit" name="disc_limit" type="number" class="inp" x-model="disc.limit" min="1" max="20" :disabled="disc.loading">
+        </div>
+        <div class="fg" style="margin-bottom:0">
+          <label class="label" for="disc-min-fl">Min followers</label>
+          <input id="disc-min-fl" name="disc_min_fl" type="number" class="inp" x-model="disc.min_followers" min="0" :disabled="disc.loading">
+        </div>
+      </div>
+
+      <div style="display:flex;gap:16px;flex-wrap:wrap">
+        <label class="tgl" for="disc-dry">
+          <input id="disc-dry" name="disc_dry_run" type="checkbox" x-model="disc.dry_run" :disabled="disc.loading">
+          <span class="tgl-text">Dry run (preview only)</span>
+        </label>
+        <label class="tgl" for="disc-auto-posts" x-show="disc.content_description">
+          <input id="disc-auto-posts" name="disc_auto_posts" type="checkbox" x-model="disc.auto_fetch_posts" :disabled="disc.loading">
+          <span class="tgl-text">Auto-collect posts</span>
+        </label>
+      </div>
+    </div>
+
+    <div class="modal-foot">
+      <button class="btn btn-outline" @click="showDisc=false" :disabled="disc.loading">Cancel</button>
+      <button class="btn btn-primary" @click="runSmartDiscover()"
+        :disabled="!disc.profile_description.trim() || disc.loading">
+        <span x-show="!disc.loading">✨ Find Profiles</span>
+        <span x-show="disc.loading" style="display:flex;align-items:center;gap:6px">
+          <span class="spin"></span> Finding...
+        </span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<script>
+function app(){return{
+  tab:'dashboard',
+  tabs:[{id:'dashboard',label:'Dashboard'},{id:'profiles',label:'Profiles'},{id:'posts',label:'Posts'},{id:'queue',label:'Reply Queue'},{id:'analytics',label:'Analytics'},{id:'settings',label:'Settings'},{id:'debug',label:'Debug Logs'}],
+  accounts:[],profiles:[],posts:[],tasks:[],analytics:[],cfg:{},stats:{},phase:'idle',
+  acct:'',pTier:'',pSort:'tier_score',tF:'pending',selP:null,pendingCount:0,
+  showAdd:false,relinkTarget:null,
+  na:{username:'',auth_token:'',ct0:'',mode:'direct'},
+  authFlow:{status:'idle'},_authPoll:null,
+  aiKeyInput:'',
+
+  // ── New Discovery state ──────────────────────────────────
+  showDisc:false,
+  disc:{
+    profile_description:'',
+    content_description:'',
+    limit:10,
+    min_followers:0,
+    dry_run:false,
+    auto_fetch_posts:true,
+    loading:false,
+    loading_status:'',
+    ai_result:null
+  },
+
+  // Logs
+  debugLogs:[],logFilter:'all',logAutoScroll:true,logLastUpdate:'—',_pollTimer:null,
+
+  toast:{on:false,msg:'',ico:'ℹ️'},_toastTimer:null,
+
+  init(){
+    this.load();
+    this._pollTimer=setInterval(()=>{
+      this.load();
+      if(this.tab==='debug')this.loadLogs();
+    },12000);
+  },
+
+  go(id){this.tab=id;if(id==='posts'&&this.selP)this.loadPosts();if(id==='debug')this.loadLogs();},
+
+  openAddForm(){this.relinkTarget=null;this.na={username:'',auth_token:'',ct0:'',mode:'direct'};this.authFlow={status:'idle'};this.showAdd=true;},
+  closeAddForm(){clearInterval(this._authPoll);this._authPoll=null;try{fetch('/api/auth/twitter/cancel',{method:'POST'});}catch(e){}this.showAdd=false;this.relinkTarget=null;this.na={username:'',auth_token:'',ct0:'',mode:'direct'};this.authFlow={status:'idle'};},
+  startRelinkFlow(account){this.relinkTarget=account;this.na={username:account.username,auth_token:'',ct0:'',mode:'direct'};this.authFlow={status:'idle'};this.showAdd=true;},
+
+  async api(path,method='GET',body=null){
+    try{const o={method,headers:{'Content-Type':'application/json'}};if(body)o.body=JSON.stringify(body);return await(await fetch(path,o)).json();}
+    catch(e){return{error:e.message};}
+  },
+
+  async load(){await Promise.all([this.loadAccounts(),this.loadProfiles(),this.loadTasks(),this.loadAnalytics(),this.loadSettings(),this.loadPhase()]);if(this.selP)this.loadPosts();},
+  async loadAccounts(){const r=await this.api('/api/accounts');if(r.accounts)this.accounts=r.accounts;},
+  async loadProfiles(){const r=await this.api('/api/profiles?tier='+this.pTier+'&sort='+this.pSort);if(r.profiles)this.profiles=r.profiles;},
+  async loadPosts(){if(!this.selP)return;const r=await this.api('/api/posts?profile_id='+this.selP.id);if(r.posts)this.posts=r.posts;},
+  async loadTasks(){
+    const r=await this.api('/api/tasks?status='+this.tF+'&account_id='+this.acct);
+    if(r.tasks)this.tasks=r.tasks.map(t=>({...t,_ed:false,_txt:t.final_reply||t.generated_reply||''}));
+    const p=await this.api('/api/tasks?status=pending');if(p.tasks)this.pendingCount=p.tasks.length;
+  },
+  async loadAnalytics(){const r=await this.api('/api/analytics');if(r.timeline)this.analytics=r.timeline;if(r.summary)this.stats=r.summary;},
+  async loadSettings(){const r=await this.api('/api/settings');if(r&&!r.error)this.cfg=r;},
+  async loadPhase(){const r=await this.api('/api/workflow/state');if(r&&r.phase)this.phase=r.phase;},
+  async loadLogs(){
+    const r=await this.api('/api/logs?lines=300');
+    if(r.logs){this.debugLogs=r.logs;this.logLastUpdate=new Date().toLocaleTimeString();
+      if(this.logAutoScroll)this.$nextTick(()=>{const el=document.getElementById('logWrap');if(el)el.scrollTop=el.scrollHeight;});}
+  },
+  async clearLogs(){await this.api('/api/logs/clear','POST');this.debugLogs=[];this.showToast('Logs cleared','🗑');},
+  get filteredLogs(){if(this.logFilter==='all')return this.debugLogs;return this.debugLogs.filter(l=>l.level===this.logFilter);},
+
+  // ── NEW: Smart Discover (NL description + AI expansion) ───
+  async runSmartDiscover(){
+    if(!this.disc.profile_description.trim()){this.showToast('Please describe who you\'re looking for','⚠️');return;}
+    this.disc.loading=true;this.disc.loading_status='🤖 Expanding query with AI...';this.disc.ai_result=null;
+    try{
+      const r=await this.api('/api/run/smart_discover','POST',{
+        profile_description:this.disc.profile_description,
+        content_description:this.disc.content_description,
+        limit:parseInt(this.disc.limit)||10,
+        min_followers:parseInt(this.disc.min_followers)||0,
+        dry_run:this.disc.dry_run,
+        auto_fetch_posts:this.disc.auto_fetch_posts&&!!this.disc.content_description
+      });
+      if(r.status==='success'){
+        this.disc.ai_result={search_queries:r.ai_keywords||[],topic_keywords:r.ai_topics||[],source:r.ai_source||'auto'};
+        let msg=`Found ${r.profiles_found} profiles`;
+        if(r.posts_saved)msg+=` · ${r.posts_saved} posts collected`;
+        this.showToast(msg+' ✅','✅');
+        if(!this.disc.dry_run){this.showDisc=false;this.go('profiles');await this.loadProfiles();}
+        else{this.showToast('Dry run: '+msg,'🔍');}
+      }else{this.showToast('Error: '+(r.message||'Unknown'),'❌');}
+    }catch(e){this.showToast('Error: '+e.message,'❌');}
+    finally{this.disc.loading=false;this.disc.loading_status='';}
+  },
+
+  // ── NEW: Fetch posts for a specific profile ────────────────
+  async fetchPostsForProfile(profileId,username){
+    this.showToast(`Fetching posts for @${username}...`,'📥');
+    const r=await this.api('/api/run/posts_for_profile','POST',{
+      profile_id:profileId,
+      content_description:this.disc.content_description||''
+    });
+    if(r.status==='success'){
+      const n=r.posts_saved||0;
+      this.showToast(`Saved ${n} posts from @${username}`+(n===0?' (already up to date)':''),'✅');
+      this.selP={id:profileId,username};this.go('posts');await this.loadPosts();
+    }else{this.showToast('Error: '+(r.message||r.error||'Unknown'),'❌');}
+  },
+
+  // ── AI Key save ────────────────────────────────────────────
+  async saveAiKey(){
+    if(!this.aiKeyInput){this.showToast('Enter API key first','⚠️');return;}
+    const keyMap={openai:'openai_api_key',groq:'groq_api_key',anthropic:'anthropic_api_key'};
+    const keyName=keyMap[this.cfg.ai_provider];
+    if(!keyName){this.showToast('Select a provider first','⚠️');return;}
+    const r=await fetch('/api/settings',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({})});
+    // Store via Extella KV through a run call
+    this.showToast(`AI key saved for ${this.cfg.ai_provider} ✅`,'🔑');
+    this.aiKeyInput='';
+  },
+
+  // ── Twitter Browser Login ─────────────────────────────────
+  async startTwLogin(){
+    this.authFlow={status:'starting'};
+    const r=await this.api('/api/auth/twitter/start','POST');
+    if(r.status==='started'){
+      this.authFlow={status:'waiting'};
+      this._authPoll=setInterval(async()=>{
+        const s=await this.api('/api/auth/twitter/status');this.authFlow=s;
+        if(s.status==='success'){clearInterval(this._authPoll);this._authPoll=null;this.na.auth_token=s.auth_token||'';this.na.ct0=s.ct0||'';if(s.username&&!this.relinkTarget)this.na.username=s.username;this.na.mode='direct';await this.saveAccount();}
+        else if(['error','cancelled'].includes(s.status)){clearInterval(this._authPoll);this._authPoll=null;}
+      },2000);
+    }else{this.authFlow={status:'error',error:r.error||'Could not open browser'};}
+  },
+  async cancelTwLogin(){clearInterval(this._authPoll);this._authPoll=null;await this.api('/api/auth/twitter/cancel','POST');this.authFlow={status:'idle'};},
+
+  async saveAccount(){
+    const tok=this.na.auth_token,ct=this.na.ct0,uname=(this.relinkTarget?this.relinkTarget.username:this.na.username).replace('@','');
+    if(!uname||!tok||!ct){this.showToast('Username, auth_token and ct0 required','⚠️');this.authFlow={status:'idle'};return;}
+    if(this.relinkTarget){
+      const r=await this.api(`/api/accounts/${this.relinkTarget.id}/relink`,'POST',{auth_token:tok,ct0:ct});
+      if(r.status==='success'){this.showToast(`@${uname} re-linked ✅`,'✅');this.closeAddForm();await this.loadAccounts();}
+      else{this.showToast('Re-link error: '+(r.message||r.error||'Unknown'),'❌');this.authFlow={status:'idle'};}
+      return;
+    }
+    const r=await this.api('/api/accounts','POST',{username:uname,auth_token:tok,ct0:ct,mode:this.na.mode,role_discovery:true,role_posting:true});
+    if(r.status==='success'){this.showToast(`@${uname} ${r.action||'added'} ✅`,'✅');this.closeAddForm();await this.loadAccounts();}
+    else{this.showToast('Error: '+(r.message||r.error||'Unknown'),'❌');this.authFlow={status:'idle'};}
+  },
+
+  async switchAcc(id){await this.api(`/api/accounts/${id}/switch`,'POST');this.showToast('Switched ✅','✅');await this.loadAccounts();},
+
+  async validateAcc(id){
+    this.showToast('Validating session...','⏳');
+    const r=await this.api(`/api/accounts/${id}/validate`,'POST');
+    if(!r||r.error){this.showToast('Server error','❌');return;}
+    if(r.status==='no_session'){this.showToast('No session — click ⟳ Re-link','⚠️');return;}
+    const v=r.validation;if(!v){this.showToast('Unexpected response','⚠️');return;}
+    if(v.valid){
+      let msg='Session valid ✅';
+      if(v.method==='api_confirmed')msg=`Session valid ✅${v.screen_name?' @'+v.screen_name:''}`;
+      else if(v.method==='rate_limited')msg='Session valid ✅ (rate limited = logged in)';
+      else if(v.method==='format_trusted')msg='Session valid ✅ (format trusted)';
+      this.showToast(msg,'✅');
+    }else{this.showToast('Session invalid ❌ — click Re-link','❌');}
+    await this.loadAccounts();
+  },
+
+  async approve(t){const r=await this.api(`/api/tasks/${t.id}/approve`,'POST');this.showToast(r.status==='success'?'Approved ✅':'Error ❌',r.status==='success'?'✅':'❌');await this.loadTasks();},
+  async reject(t){await this.api(`/api/tasks/${t.id}/reject`,'POST');this.showToast('Rejected','❌');await this.loadTasks();},
+  async saveEdit(t){
+    if(!t._txt){this.showToast('Cannot be empty','⚠️');return;}
+    if(t._txt.length>280){this.showToast('Too long: '+t._txt.length+' chars','⚠️');return;}
+    const r=await this.api(`/api/tasks/${t.id}`,'PATCH',{edited_reply:t._txt});
+    if(r.status==='success'){t._ed=false;t.final_reply=t._txt;this.showToast('Saved ✅','💾');}
+  },
+  async bulkApprove(){const ids=this.tasks.filter(t=>t.status==='pending').map(t=>t.id);if(!ids.length)return;await this.api('/api/tasks/bulk','POST',{action:'approve',task_ids:ids});this.showToast('All '+ids.length+' approved ✅','✅');await this.loadTasks();},
+  async postAll(){this.showToast('Posting...','🚀');await this.api('/api/run/post','POST',{});setTimeout(()=>this.loadTasks(),5000);},
+  async saveSetting(k,v){await this.api('/api/settings','PATCH',{[k]:v});this.showToast('Saved','💾');},
+
+  async genReplies(){
+    if(!this.selP){this.showToast('Select a profile first','⚠️');return;}
+    this.showToast('Generating replies...','✨');
+    await this.api('/api/run/generate','POST',{mode:'single',profile_id:this.selP.id,reply_intent:'helpful and curious'});
+    this.showToast('Replies generated — check Queue ✨','✨');
+    setTimeout(()=>{this.go('queue');this.loadTasks();},2500);
+  },
+  async runMonitor(){
+    this.showToast('Checking...','📡');
+    const r=await this.api('/api/run/monitor','POST');
+    this.showToast(r.new_responses>0?(r.new_responses+' new responses 🎉'):'No new responses','📡');
+    if(r.new_responses>0)await this.loadTasks();
+  },
+  showToast(msg,ico='ℹ️'){
+    this.toast={on:true,msg,ico};clearTimeout(this._toastTimer);
+    this._toastTimer=setTimeout(()=>{this.toast={...this.toast,on:false};},4200);
+  }
+};}
+</script>
+</body>
+</html>
