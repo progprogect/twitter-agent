@@ -18,6 +18,26 @@ BEARER=('AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs'
         '%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA')
 CREATE_TWEET_QUERY_ID='SoVnbfCycZ7fERGCwpZkYA'
 GRAPHQL_CREATE_TWEET_URL=f'https://x.com/i/api/graphql/{CREATE_TWEET_QUERY_ID}/CreateTweet'
+TWEET_DETAIL_QUERY_ID='QuBlQ6SxNAQCt6-kBiCXCQ'
+GRAPHQL_TWEET_DETAIL_URL=f'https://x.com/i/api/graphql/{TWEET_DETAIL_QUERY_ID}/TweetDetail'
+_TWEET_DETAIL_FEATURES={
+    'rweb_lists_timeline_redesign_enabled': True,
+    'responsive_web_graphql_exclude_directive_enabled': True,
+    'verified_phone_label_enabled': False,
+    'creator_subscriptions_tweet_preview_api_enabled': True,
+    'responsive_web_graphql_timeline_navigation_enabled': True,
+    'responsive_web_graphql_skip_user_profile_image_extensions_enabled': False,
+    'tweetypie_unmention_optimization_enabled': True,
+    'responsive_web_edit_tweet_api_enabled': True,
+    'graphql_is_translatable_rweb_tweet_is_translatable_enabled': True,
+    'view_counts_everywhere_api_enabled': True,
+    'longform_notetweets_consumption_enabled': True,
+    'tweet_awards_web_tipping_enabled': False,
+    'freedom_of_speech_not_reach_enabled': False,
+    'standardized_nudges_misinfo': True,
+    'longform_notetweets_rich_text_read_enabled': True,
+    'responsive_web_enhance_cards_enabled': False,
+}
 _CREATE_TWEET_FEATURES={
     'interactive_text_enabled': True,
     'longform_notetweets_inline_media_enabled': False,
@@ -888,6 +908,201 @@ def _graphql_errors_text(data):
             parts.append(str(e))
     return '; '.join(parts)[:800]
 
+def _unwrap_graphql_tweet_result(result):
+    if not isinstance(result, dict):
+        return None
+    if result.get('__typename') == 'TweetWithVisibilityResults':
+        tw = result.get('tweet')
+        return tw if isinstance(tw, dict) else None
+    if result.get('legacy') or result.get('rest_id'):
+        return result
+    return None
+
+def _tweet_author_screen_name(tw):
+    if not isinstance(tw, dict):
+        return ''
+    core = tw.get('core') or {}
+    ur = core.get('user_results') or {}
+    res = ur.get('result') or {}
+    if isinstance(res, dict):
+        leg = res.get('legacy') or {}
+        sn = (leg.get('screen_name') or '').strip()
+        if sn:
+            return sn
+    return ''
+
+def _walk_collect_timeline_tweets(obj, bucket):
+    if isinstance(obj, dict):
+        tr = obj.get('tweet_results')
+        if isinstance(tr, dict):
+            tw = _unwrap_graphql_tweet_result(tr.get('result'))
+            if tw and isinstance(tw, dict):
+                rid = str(tw.get('rest_id') or '').strip()
+                if rid:
+                    bucket[rid] = tw
+        for v in obj.values():
+            _walk_collect_timeline_tweets(v, bucket)
+    elif isinstance(obj, list):
+        for x in obj:
+            _walk_collect_timeline_tweets(x, bucket)
+
+def _replies_direct_to_focal_from_tweet_detail(data, focal_tweet_id):
+    """Return list of dicts: rest_id, full_text, author_username (direct replies only)."""
+    focal_s = str(focal_tweet_id or '').strip()
+    if not focal_s or not isinstance(data, dict):
+        return []
+    root = data.get('data') or {}
+    by_id = {}
+    _walk_collect_timeline_tweets(root, by_id)
+    out = []
+    seen = set()
+    for rid, tw in by_id.items():
+        if rid == focal_s:
+            continue
+        leg = tw.get('legacy') or {}
+        ir = str(leg.get('in_reply_to_status_id_str') or '').strip()
+        if ir != focal_s:
+            continue
+        if rid in seen:
+            continue
+        seen.add(rid)
+        txt = (leg.get('full_text') or leg.get('text') or '')[:4000]
+        out.append({
+            'rest_id': rid,
+            'full_text': txt,
+            'author_username': _tweet_author_screen_name(tw) or (leg.get('screen_name') or ''),
+        })
+    return out
+
+def _tweet_detail_get(cf_req, auth_token, ct0, focal_tweet_id):
+    """GET TweetDetail; returns (json_dict_or_None, error_or_None)."""
+    variables = {
+        'focalTweetId': str(focal_tweet_id),
+        'count': 40,
+        'referrer': 'tweet',
+        'with_rux_injections': False,
+        'includePromotedContent': True,
+        'withCommunity': True,
+        'withQuickPromoteEligibilityTweetFields': True,
+        'withBirdwatchNotes': True,
+        'withVoice': True,
+    }
+    fid = str(focal_tweet_id).strip()
+    headers = {
+        'authorization': f'Bearer {BEARER}',
+        'cookie': f'auth_token={auth_token}; ct0={ct0}',
+        'x-csrf-token': ct0,
+        'x-twitter-auth-type': 'OAuth2Session',
+        'x-twitter-active-user': 'yes',
+        'x-twitter-client-language': 'en',
+        'content-type': 'application/json',
+        'user-agent': (
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 '
+            '(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
+        ),
+        'accept': '*/*',
+        'origin': 'https://x.com',
+        'referer': f'https://x.com/i/status/{fid}',
+    }
+    params = {
+        'variables': json.dumps(variables, separators=(',', ':')),
+        'features': json.dumps(_TWEET_DETAIL_FEATURES, separators=(',', ':')),
+    }
+    try:
+        resp = cf_req.get(
+            GRAPHQL_TWEET_DETAIL_URL,
+            headers=headers,
+            params=params,
+            impersonate='chrome',
+            timeout=45,
+        )
+    except Exception as e:
+        return None, str(e)[:500]
+    try:
+        body = resp.json()
+    except Exception:
+        return None, f'HTTP {resp.status_code} non-JSON'
+    if resp.status_code >= 400:
+        msg = _graphql_errors_text(body) or (body.get('errors') if isinstance(body, dict) else None) or resp.text[:400]
+        return None, f'HTTP {resp.status_code}: {msg}'[:800]
+    err_txt = _graphql_errors_text(body)
+    if err_txt:
+        return None, err_txt
+    return body, None
+
+def check_incoming_replies(body=None):
+    """
+    Fetches replies to our posted tweets using Twitter GraphQL TweetDetail.
+    Stores new replies in conversations table.
+    Returns {checked, new_replies, conversations}
+    """
+    body = body or {}
+    cf_req = _ensure_curl_cffi_requests()
+    if not cf_req:
+        return {'status': 'error', 'message': 'curl_cffi is required; pip install curl_cffi failed'}
+    pool = build_credentials_pool()
+    if not pool:
+        return {'status': 'error', 'message': 'No credentials in pool. Add an account with a valid session.'}
+    conn = db()
+    rows = conn.execute(
+        "SELECT id, posted_tweet_id, account_id, generated_reply, edited_reply FROM reply_tasks "
+        "WHERE status='posted' AND posted_tweet_id IS NOT NULL AND TRIM(posted_tweet_id)!=''"
+    ).fetchall()
+    conn.close()
+    if not rows:
+        return {'status': 'success', 'checked': 0, 'new_replies': 0, 'conversations': []}
+    new_rows = []
+    checked = 0
+    for row in rows:
+        task_id = row['id']
+        posted_tid = str(row['posted_tweet_id']).strip()
+        if not posted_tid:
+            continue
+        cred = _pick_pool_creds(pool, row['account_id'])
+        if not cred:
+            log('WARN', f'check_replies: no creds for task {task_id[:8]}…')
+            continue
+        checked += 1
+        data, err = _tweet_detail_get(cf_req, cred['auth_token'], cred['ct0'], posted_tid)
+        if err:
+            log('WARN', f'TweetDetail task={task_id[:8]}… tweet={posted_tid}: {err}')
+            continue
+        replies = _replies_direct_to_focal_from_tweet_detail(data, posted_tid)
+        our_text = (row['edited_reply'] or row['generated_reply'] or '').strip()
+        conn = db()
+        for rep in replies:
+            rid = rep['rest_id']
+            exists = conn.execute(
+                'SELECT 1 FROM conversations WHERE tweet_id=? LIMIT 1', (rid,)
+            ).fetchone()
+            if exists:
+                continue
+            cid = str(uuid.uuid4())
+            txt = (rep.get('full_text') or '')[:4000]
+            author = (rep.get('author_username') or '')[:200]
+            conn.execute(
+                'INSERT INTO conversations (id, reply_task_id, depth, direction, tweet_id, text, '
+                'author_username, created_at) VALUES (?,?,?,?,?,?,?,datetime("now"))',
+                (cid, task_id, 1, 'theirs', rid, txt, author),
+            )
+            new_rows.append({
+                'reply_task_id': task_id,
+                'tweet_id': rid,
+                'author_username': author,
+                'text': txt,
+                'created_at': datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
+                'posted_tweet_id': posted_tid,
+                'our_reply_text': our_text,
+            })
+        conn.commit()
+        conn.close()
+    return {
+        'status': 'success',
+        'checked': checked,
+        'new_replies': len(new_rows),
+        'conversations': new_rows,
+    }
+
 def _post_one_reply_cf(cf_req, auth_token, ct0, in_reply_to_tweet_id, tweet_text):
     """Returns (rest_id_or_None, error_message_or_None)."""
     variables = {
@@ -1070,6 +1285,49 @@ def run_monitor():return jsonify(run_expert('tw_monitor',{'action':'check'}))
 def run_search_getx():return jsonify(local_search_getx(request.json or{}))
 @app.route('/api/run/queue',methods=['POST'])
 def run_queue():return jsonify(local_create_batch(request.json or{}))
+@app.route('/api/run/check_replies',methods=['POST'])
+def run_check_replies():
+    return jsonify(check_incoming_replies(request.json or {}))
+
+@app.route('/api/conversations',methods=['GET'])
+def get_conversations():
+    """Threads: posted reply_tasks + incoming conversations rows."""
+    conn=db()
+    rows=conn.execute("""
+        SELECT
+            rt.id AS task_id,
+            rt.posted_tweet_id,
+            rt.generated_reply AS our_reply,
+            rt.edited_reply,
+            rt.posted_at,
+            rt.account_id,
+            p.url AS original_post_url,
+            p.text AS original_post_text,
+            pr.username AS profile_username,
+            COALESCE(
+                (SELECT COUNT(*) FROM conversations c WHERE c.reply_task_id=rt.id AND c.direction='theirs'),
+                0
+            ) AS reply_count
+        FROM reply_tasks rt
+        LEFT JOIN posts p ON rt.post_id=p.id
+        LEFT JOIN profiles pr ON rt.profile_id=pr.id
+        WHERE rt.status='posted' AND rt.posted_tweet_id IS NOT NULL AND TRIM(rt.posted_tweet_id)!=''
+        ORDER BY rt.posted_at DESC
+    """).fetchall()
+    threads=[]
+    for row in rows:
+        d=dict(row)
+        convs=conn.execute("""
+            SELECT tweet_id, text, author_username, created_at
+            FROM conversations
+            WHERE reply_task_id=? AND direction='theirs'
+            ORDER BY created_at ASC
+        """,(d['task_id'],)).fetchall()
+        d['replies']=[dict(c) for c in convs]
+        d['final_reply']=d.get('edited_reply') or d.get('our_reply')
+        threads.append(d)
+    conn.close()
+    return jsonify({'status':'success','threads':threads,'total':len(threads)})
 
 # ── Analytics ────────────────────────────────────────────
 @app.route('/api/analytics',methods=['GET'])

@@ -37,6 +37,17 @@ a{color:inherit;text-decoration:none;}
 .nav-item:hover{background:var(--sbh);color:#CBD5E1;}.nav-item.active{background:var(--sba);color:#fff;}
 .nav-icon{font-size:14px;width:18px;text-align:center;flex-shrink:0;}.nav-label{flex:1;}
 .nav-badge{background:var(--rd);color:#fff;font-size:10px;font-weight:700;padding:1px 5px;border-radius:10px;min-width:16px;text-align:center;}
+.conv-toolbar{display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap;}
+.conv-meta{font-size:12px;color:var(--t3);}
+.conv-thread{margin-bottom:16px;border:1px solid var(--bd);border-radius:var(--r);background:var(--sf);overflow:hidden;box-shadow:var(--sh);}
+.conv-thread-head{padding:12px 16px;background:var(--sf2);border-bottom:1px solid var(--bd);display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:12.5px;line-height:1.45;}
+.conv-thread-body{padding:14px 16px;}
+.conv-snippet{color:var(--t2);max-width:min(420px,40%);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.conv-our{background:var(--blb);border:1px solid #BFDBFE;border-radius:10px;padding:12px 14px;margin-bottom:12px;font-size:13.5px;line-height:1.55;color:var(--t1);}
+.conv-bubbles{display:flex;flex-direction:column;gap:8px;}
+.conv-bubble{align-self:flex-start;max-width:min(560px,96%);background:var(--sf2);border:1px solid var(--bd);border-radius:12px 12px 12px 4px;padding:10px 12px;font-size:13px;line-height:1.5;}
+.conv-bubble-meta{font-size:11px;color:var(--t3);margin-bottom:5px;font-weight:600;}
+.conv-foot{padding:10px 16px;border-top:1px solid var(--bd);background:var(--sf2);font-size:12px;}
 .sb-sep{height:1px;background:rgba(255,255,255,.07);margin:6px 0;}
 .sb-footer{padding:12px 16px;border-top:1px solid rgba(255,255,255,.07);}
 .sb-stat{display:flex;justify-content:space-between;font-size:11.5px;color:var(--sbt);margin-bottom:3px;}
@@ -200,6 +211,7 @@ form.filter-panel{margin:0;display:block;}
       <button class="nav-item" :class="tab==='dashboard'&&'active'" @click="go('dashboard')"><span class="nav-icon">🏠</span><span class="nav-label">Dashboard</span></button>
       <button class="nav-item" :class="tab==='outreach'&&'active'" @click="go('outreach')"><span class="nav-icon">🔎</span><span class="nav-label">Outreach</span><span x-show="profileTotal>0" class="nav-badge" x-text="profileTotal" style="background:var(--sbt);color:var(--sb)"></span></button>
       <button class="nav-item" :class="tab==='queue'&&'active'" @click="go('queue')"><span class="nav-icon">✅</span><span class="nav-label">Reply Queue</span><span x-show="pendingCount>0" class="nav-badge" x-text="pendingCount"></span></button>
+      <button class="nav-item" :class="tab==='conversations'&&'active'" @click="go('conversations')"><span class="nav-icon">💬</span><span class="nav-label">Conversations</span><span x-show="totalReplies>0" class="nav-badge" x-text="totalReplies"></span></button>
       <div class="sb-sep"></div>
       <button class="nav-item" :class="tab==='analytics'&&'active'" @click="go('analytics')"><span class="nav-icon">📊</span><span class="nav-label">Analytics</span></button>
       <button class="nav-item" :class="tab==='settings'&&'active'" @click="go('settings')"><span class="nav-icon">⚙️</span><span class="nav-label">Settings</span><span x-show="accounts.filter(a=>!a.has_session).length>0" class="nav-badge">!</span></button>
@@ -484,6 +496,56 @@ form.filter-panel{margin:0;display:block;}
         </template>
       </div>
 
+      <!-- CONVERSATIONS -->
+      <div x-show="tab==='conversations'" class="fade">
+        <div class="conv-toolbar">
+          <button type="button" class="btn btn-primary btn-sm" :disabled="convChecking" @click="checkReplies()">
+            <span x-show="convChecking" class="spin"></span>
+            <span x-text="convChecking?'Checking…':'Check for replies'"></span>
+          </button>
+          <span class="conv-meta" x-text="convLastChecked?'Last check: '+convLastChecked:''"></span>
+          <span class="tbl-count" style="margin-left:auto" x-text="(conversations.length||0)+' threads · '+totalReplies+' incoming'"></span>
+        </div>
+        <div x-show="conversations.length===0" class="empty">
+          <div class="empty-icon">💬</div>
+          <div class="empty-h">No posted replies yet</div>
+          <div class="empty-d">Approve and post replies from the queue. After posting, check here for responses to your tweets.</div>
+        </div>
+        <template x-for="th in conversations" :key="th.task_id">
+          <div class="conv-thread">
+            <div class="conv-thread-head">
+              <span class="badge bt2" x-text="'@'+(th.profile_username||'—')"></span>
+              <span class="conv-snippet" :title="th.original_post_text||''" x-text="(th.original_post_text||'').length>72?(th.original_post_text||'').slice(0,72)+'…':(th.original_post_text||'—')"></span>
+              <span style="color:var(--t3)">→</span>
+              <span class="conv-snippet" :title="th.final_reply||''" x-text="(th.final_reply||'').length>56?(th.final_reply||'').slice(0,56)+'…':(th.final_reply||'—')"></span>
+              <span class="badge bt3" style="margin-left:auto" x-text="(th.reply_count||0)+' replies'"></span>
+            </div>
+            <div class="conv-thread-body">
+              <div class="qc-plabel">Our reply</div>
+              <div class="conv-our" x-text="th.final_reply||'—'"></div>
+              <template x-if="(th.replies||[]).length>0">
+                <div>
+                  <div class="qc-plabel" style="margin-bottom:8px">Incoming</div>
+                  <div class="conv-bubbles">
+                    <template x-for="rp in (th.replies||[])" :key="rp.tweet_id">
+                      <div class="conv-bubble">
+                        <div class="conv-bubble-meta" x-text="'@'+(rp.author_username||'?')+' · '+(rp.created_at||'').slice(0,19)"></div>
+                        <div x-text="rp.text||''"></div>
+                      </div>
+                    </template>
+                  </div>
+                </div>
+              </template>
+              <div x-show="!(th.replies||[]).length" style="font-size:12.5px;color:var(--t3);font-style:italic">No incoming messages yet.</div>
+            </div>
+            <div class="conv-foot">
+              <a class="pc-link" :href="'https://x.com/i/status/'+(th.posted_tweet_id||'')" target="_blank" rel="noopener">Open our tweet on X ↗</a>
+              <span x-show="th.posted_at" style="margin-left:12px;color:var(--t3)" x-text="'Posted '+(th.posted_at||'').slice(0,16)"></span>
+            </div>
+          </div>
+        </template>
+      </div>
+
       <!-- ANALYTICS -->
       <div x-show="tab==='analytics'" class="fade">
         <div class="stats-row">
@@ -670,7 +732,7 @@ form.filter-panel{margin:0;display:block;}
 <script>
 function app(){return{
   tab:'dashboard',
-  tabs:[{id:'dashboard',label:'Dashboard'},{id:'outreach',label:'Outreach'},{id:'queue',label:'Reply Queue'},{id:'analytics',label:'Analytics'},{id:'settings',label:'Settings'},{id:'debug',label:'Debug Logs'}],
+  tabs:[{id:'dashboard',label:'Dashboard'},{id:'outreach',label:'Outreach'},{id:'queue',label:'Reply Queue'},{id:'conversations',label:'Conversations'},{id:'analytics',label:'Analytics'},{id:'settings',label:'Settings'},{id:'debug',label:'Debug Logs'}],
   accounts:[],profiles:[],tasks:[],analytics:[],cfg:{},stats:{},phase:'idle',
   profileTotal:0,
   acct:'',tF:'pending',pendingCount:0,
@@ -696,6 +758,8 @@ function app(){return{
   debugLogs:[],logFilter:'all',logAutoScroll:true,logLastUpdate:'—',_pollTimer:null,
   postReplySel:[],_afterPostPoll:null,_afterPostPollN:0,
 
+  conversations:[],totalReplies:0,convLastChecked:null,convChecking:false,
+
   toast:{on:false,msg:'',ico:'ℹ️'},_toastTimer:null,
 
   init(){
@@ -710,6 +774,7 @@ function app(){return{
     this.tab=id;
     if(id==='outreach')this.switchOutreach(this.outreachSub);
     if(id==='debug')this.loadLogs();
+    if(id==='conversations')this.loadConversations();
   },
 
   switchOutreach(sub){
@@ -871,7 +936,11 @@ function app(){return{
     }catch(e){return{status:'error',error:e.message};}
   },
 
-  async load(){await Promise.all([this.loadAccounts(),this.loadProfiles(),this.loadTasks(),this.loadAnalytics(),this.loadSettings(),this.loadPhase()]);if(this.tab==='outreach')this.switchOutreach(this.outreachSub);},
+  async load(){
+    await Promise.all([this.loadAccounts(),this.loadProfiles(),this.loadTasks(),this.loadAnalytics(),this.loadSettings(),this.loadPhase()]);
+    if(this.tab==='outreach')this.switchOutreach(this.outreachSub);
+    if(this.tab==='conversations')await this.loadConversations();
+  },
   async loadAccounts(){const r=await this.api('/api/accounts');if(r.accounts)this.accounts=r.accounts;},
   async loadProfiles(){
     const r=await this.api('/api/profiles?page_size=200&sort=discovered_at&order=DESC');
@@ -884,6 +953,26 @@ function app(){return{
     const p=await this.api('/api/tasks?status=pending');if(p.tasks)this.pendingCount=p.tasks.length;
   },
   async loadAnalytics(){const r=await this.api('/api/analytics');if(r.timeline)this.analytics=r.timeline;if(r.summary)this.stats=r.summary;},
+  async loadConversations(){
+    const r=await this.api('/api/conversations');
+    if(r.threads){
+      this.conversations=r.threads;
+      this.totalReplies=r.threads.reduce((s,t)=>s+(+t.reply_count||0),0);
+    }
+  },
+  async checkReplies(){
+    this.convChecking=true;
+    this.showToast('Checking for new replies...','📡');
+    const r=await this.api('/api/run/check_replies','POST',{});
+    this.convChecking=false;
+    this.convLastChecked=new Date().toLocaleTimeString();
+    if(r.status==='success'){
+      this.showToast('Found '+(r.new_replies||0)+' new replies',(r.new_replies||0)>0?'🎉':'📭');
+      await this.loadConversations();
+    }else{
+      this.showToast(r.message||r.error||'Check failed','❌');
+    }
+  },
   async loadSettings(){const r=await this.api('/api/settings');if(r&&!r.error)this.cfg=r;},
   async loadPhase(){const r=await this.api('/api/workflow/state');if(r&&r.phase)this.phase=r.phase;},
   async loadLogs(){
