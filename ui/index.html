@@ -84,8 +84,19 @@ th{text-align:left;padding:9px 14px;font-size:10.5px;font-weight:700;color:var(-
 td{padding:10px 14px;border-bottom:1px solid var(--bd);vertical-align:middle;font-size:13.5px;}
 tr:last-child td{border-bottom:none;}
 .tbl-row{transition:background var(--tr);}.tbl-row:hover td{background:#F0F7FF;}
-.p-name{font-weight:600;color:var(--t1);}
+.p-name{font-weight:600;color:var(--t1);font-size:14px;}
+.p-disp{font-weight:500;color:var(--t2);font-size:13px;}
 .p-bio{font-size:11.5px;color:var(--t3);margin-top:1px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.p-bio-full{font-size:13px;line-height:1.5;color:var(--t2);margin-top:8px;max-width:min(560px,100%);white-space:pre-wrap;word-break:break-word;}
+.filter-panel{padding:16px 18px;border-bottom:1px solid var(--bd);background:linear-gradient(180deg,var(--sf2) 0%,var(--sf) 100%);}
+form.filter-panel{margin:0;display:block;}
+.outreach-stack{display:grid;}
+.outreach-stack>.outreach-pane{grid-area:1/1;}
+.filter-panel-head{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.55px;color:var(--t3);margin-bottom:12px;}
+.filter-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(148px,1fr));gap:12px 18px;align-items:end;}
+.filter-field label,.filter-field .filter-lbl{display:block;font-size:11px;font-weight:600;color:var(--t2);margin-bottom:5px;letter-spacing:.02em;}
+.filter-actions{display:flex;align-items:center;gap:10px;margin-top:16px;flex-wrap:wrap;padding-top:14px;border-top:1px solid var(--bd);}
+.filter-bio-hint{font-size:11.5px;color:var(--t3);margin-top:6px;line-height:1.4;}
 .badge{display:inline-flex;align-items:center;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;white-space:nowrap;}
 .bt1{background:#FEF3C7;color:#92400E;}.bt2{background:#DBEAFE;color:#1E40AF;}
 .bt3{background:var(--sf2);color:var(--t2);border:1px solid var(--bd);}
@@ -286,7 +297,8 @@ tr:last-child td{border-bottom:none;}
           <button type="button" class="btn btn-outline btn-sm" @click="go('queue')">Reply queue</button>
         </div>
 
-        <div x-show="outreachSub==='all'" class="tbl-wrap">
+        <div class="outreach-stack">
+        <div class="tbl-wrap outreach-pane" x-show="outreachSub==='all'">
           <table x-show="outreachFeed.length>0">
             <thead><tr><th style="width:40px"></th><th>Post</th><th>Author</th><th style="text-align:right">Likes</th></tr></thead>
             <tbody>
@@ -319,17 +331,17 @@ tr:last-child td{border-bottom:none;}
           </div>
         </div>
 
-        <div x-show="outreachSub==='posts'" class="tbl-wrap">
-          <div class="tbl-bar" style="flex-wrap:wrap">
-            <input type="date" class="inp" style="width:auto;min-width:130px" x-model="opostFilters.date_from" @change="opage=1;loadOutreachPosts()">
+        <div class="tbl-wrap outreach-pane" x-show="outreachSub==='posts'">
+          <form class="tbl-bar" style="flex-wrap:wrap;align-items:center" @submit.prevent="applyOutreachPosts()">
+            <input type="date" class="inp" style="width:auto;min-width:130px" x-model="opDateFrom" @change="applyOutreachPosts()">
             <span style="font-size:12px;color:var(--t3)">→</span>
-            <input type="date" class="inp" style="width:auto;min-width:130px" x-model="opostFilters.date_to" @change="opage=1;loadOutreachPosts()">
-            <input type="number" class="inp" style="width:88px" placeholder="Min likes" x-model="opostFilters.min_likes" @change="opage=1;loadOutreachPosts()">
-            <input type="number" class="inp" style="width:88px" placeholder="Max" x-model="opostFilters.max_likes" @change="opage=1;loadOutreachPosts()">
-            <input type="text" class="inp" style="width:72px" placeholder="lang" x-model="opostFilters.lang" @change="opage=1;loadOutreachPosts()">
-            <button type="button" class="btn btn-outline btn-sm" @click="opage=1;loadOutreachPosts()">Apply</button>
+            <input type="date" class="inp" style="width:auto;min-width:130px" x-model="opDateTo" @change="applyOutreachPosts()">
+            <input type="number" class="inp" style="width:88px" placeholder="Min likes" x-model="opMinLikes" @change="applyOutreachPosts()">
+            <input type="number" class="inp" style="width:88px" placeholder="Max" x-model="opMaxLikes" @change="applyOutreachPosts()">
+            <input type="text" class="inp" style="width:72px" placeholder="lang" name="op_lang" x-model="opLang" @change="applyOutreachPosts()">
+            <button type="submit" class="btn btn-outline btn-sm">Apply</button>
             <span class="tbl-count" x-text="opostsTotal+' posts'"></span>
-          </div>
+          </form>
           <table x-show="oposts.length>0">
             <thead><tr><th style="width:40px"></th><th>Text</th><th style="text-align:right">Likes</th><th>Lang</th><th>Posted</th></tr></thead>
             <tbody>
@@ -347,35 +359,70 @@ tr:last-child td{border-bottom:none;}
           <div x-show="!oposts.length" class="empty" style="padding:28px"><div class="empty-h">No posts match filters</div></div>
         </div>
 
-        <div x-show="outreachSub==='profiles'" class="tbl-wrap">
-          <div class="tbl-bar" style="flex-wrap:wrap">
-            <input type="number" class="inp" style="width:100px" placeholder="Min flw" x-model="profFilters.min_followers" @change="prpage=1;loadOutreachProfiles()">
-            <input type="number" class="inp" style="width:100px" placeholder="Max flw" x-model="profFilters.max_followers" @change="prpage=1;loadOutreachProfiles()">
-            <input type="text" class="inp" style="min-width:120px" placeholder="Location" x-model="profFilters.location" @change="prpage=1;loadOutreachProfiles()">
-            <select class="sel" x-model="profFilters.blue" @change="prpage=1;loadOutreachProfiles()">
-              <option value="">Any Blue</option><option value="1">Blue verified</option><option value="0">Not Blue</option>
-            </select>
-            <select class="sel" x-model="pfSort" @change="prpage=1;loadOutreachProfiles()">
-              <option value="discovered_at">Sort: Newest</option>
-              <option value="followers_count">Sort: Followers</option>
-              <option value="username">Sort: Username</option>
-            </select>
-            <span class="tbl-count" x-text="oprTotal+' profiles'"></span>
-          </div>
+        <div class="tbl-wrap outreach-pane" x-show="outreachSub==='profiles'">
+          <form class="filter-panel" @submit.prevent="applyOutreachProfiles()">
+            <div class="filter-panel-head">Filters</div>
+            <div class="filter-field" style="max-width:640px">
+              <label for="pf-bio-q">Search in bio, name &amp; @username</label>
+              <input id="pf-bio-q" name="profile_bio_search" type="text" class="inp" autocomplete="off"
+                placeholder="e.g. AI, developer, crypto — partial match"
+                x-model="pfBioSearch">
+              <p class="filter-bio-hint">Case-insensitive partial match in bio, display name, or username. Press Enter or Apply.</p>
+            </div>
+            <div class="filter-grid" style="margin-top:16px">
+              <div class="filter-field">
+                <span class="filter-lbl">Followers — min</span>
+                <input type="number" class="inp" min="0" placeholder="Any" name="pf_min_flw" x-model="pfMinFollowers" @change="applyOutreachProfiles()">
+              </div>
+              <div class="filter-field">
+                <span class="filter-lbl">Followers — max</span>
+                <input type="number" class="inp" min="0" placeholder="Any" name="pf_max_flw" x-model="pfMaxFollowers" @change="applyOutreachProfiles()">
+              </div>
+              <div class="filter-field" style="grid-column:span 2;min-width:180px">
+                <span class="filter-lbl">Location</span>
+                <input type="text" class="inp" placeholder="City, country…" name="pf_loc" x-model="pfLocation" @change="applyOutreachProfiles()">
+              </div>
+              <div class="filter-field">
+                <span class="filter-lbl">Verification</span>
+                <select class="sel" style="width:100%" name="pf_blue" x-model="pfBlue" @change="applyOutreachProfiles()">
+                  <option value="">Any</option>
+                  <option value="1">Blue verified</option>
+                  <option value="0">Not verified</option>
+                </select>
+              </div>
+              <div class="filter-field">
+                <span class="filter-lbl">Sort by</span>
+                <select class="sel" style="width:100%" name="pf_sort" x-model="pfSort" @change="applyOutreachProfiles()">
+                  <option value="discovered_at">Newest first</option>
+                  <option value="followers_count">Followers (high → low)</option>
+                  <option value="username">Username (A–Z)</option>
+                </select>
+              </div>
+            </div>
+            <div class="filter-actions">
+              <button type="submit" class="btn btn-primary btn-sm">Apply filters</button>
+              <button type="button" class="btn btn-outline btn-sm" @click="resetProfFilters()">Reset</button>
+              <span class="tbl-count" style="margin-left:auto" x-text="oprTotal+' profiles'"></span>
+            </div>
+          </form>
           <table x-show="oprProfiles.length>0">
-            <thead><tr><th>Profile</th><th style="text-align:right">Followers</th><th>Location</th><th>Blue</th></tr></thead>
+            <thead><tr><th>Profile &amp; bio</th><th style="text-align:right;width:100px">Followers</th><th style="min-width:120px">Location</th><th style="width:88px">Blue</th></tr></thead>
             <tbody>
               <template x-for="p in oprProfiles" :key="p.id">
                 <tr class="tbl-row">
-                  <td><div class="p-name">@<span x-text="p.username"></span></div><div class="p-bio" x-text="(p.bio||'').slice(0,120)"></div></td>
-                  <td style="text-align:right;font-weight:500" x-text="(p.followers_count||0).toLocaleString()"></td>
-                  <td x-text="p.location||'—'"></td>
-                  <td><span class="badge bt2" x-show="p.is_blue_verified">Blue</span><span x-show="!p.is_blue_verified" style="color:var(--t3)">—</span></td>
+                  <td style="vertical-align:top;padding-top:14px;padding-bottom:14px">
+                    <div class="p-name">@<span x-text="p.username"></span><span class="p-disp" x-show="p.display_name" x-text="' · '+p.display_name"></span></div>
+                    <div class="p-bio-full" x-text="(p.bio && p.bio.trim()) ? p.bio : '—'"></div>
+                  </td>
+                  <td style="text-align:right;font-weight:600;vertical-align:top;padding-top:14px" x-text="(p.followers_count||0).toLocaleString()"></td>
+                  <td style="vertical-align:top;padding-top:14px;color:var(--t2)" x-text="p.location||'—'"></td>
+                  <td style="vertical-align:top;padding-top:14px"><span class="badge bt2" x-show="p.is_blue_verified">Blue</span><span x-show="!p.is_blue_verified" style="color:var(--t3)">—</span></td>
                 </tr>
               </template>
             </tbody>
           </table>
-          <div x-show="!oprProfiles.length" class="empty" style="padding:28px"><div class="empty-h">No profiles</div></div>
+          <div x-show="!oprProfiles.length" class="empty" style="padding:28px"><div class="empty-h">No profiles match these filters</div></div>
+        </div>
         </div>
       </div>
 
@@ -624,10 +671,10 @@ function app(){return{
   genModal:{open:false,intent:'helpful and curious, add genuine value'},
 
   oposts:[],opostsTotal:0,opage:1,
-  opostFilters:{date_from:'',date_to:'',min_likes:'',max_likes:'',lang:''},
+  opDateFrom:'',opDateTo:'',opMinLikes:'',opMaxLikes:'',opLang:'',
 
   oprProfiles:[],oprTotal:0,prpage:1,
-  profFilters:{min_followers:'',max_followers:'',location:'',blue:''},
+  pfBioSearch:'',pfMinFollowers:'',pfMaxFollowers:'',pfLocation:'',pfBlue:'',
   pfSort:'discovered_at',
 
   debugLogs:[],logFilter:'all',logAutoScroll:true,logLastUpdate:'—',_pollTimer:null,
@@ -711,7 +758,10 @@ function app(){return{
     if(r.status==='success'){
       this.showToast(`Posts: ${r.posts_saved||0} · Profiles: ${r.profiles_upserted||0} · API calls: ${r.api_calls||0}`,'✅');
       await this.loadProfiles();
-      if(this.tab==='outreach')await this.loadOutreachAll();
+      if(this.tab==='outreach'){
+        await this.loadOutreachAll();
+        if(this.outreachSub==='profiles')await this.loadOutreachProfiles();
+      }
     }else{
       this.showToast(r.message||r.error||'Search failed','❌');
     }
@@ -724,25 +774,51 @@ function app(){return{
 
   async loadOutreachPosts(){
     let q='/api/posts?page='+this.opage+'&page_size=80&order=DESC';
-    const f=this.opostFilters;
-    if(f.date_from)q+='&date_from='+encodeURIComponent(f.date_from);
-    if(f.date_to)q+='&date_to='+encodeURIComponent(f.date_to);
-    if(String(f.min_likes)!=='')q+='&min_likes='+encodeURIComponent(f.min_likes);
-    if(String(f.max_likes)!=='')q+='&max_likes='+encodeURIComponent(f.max_likes);
-    if(f.lang)q+='&lang='+encodeURIComponent(f.lang);
+    if(this.opDateFrom)q+='&date_from='+encodeURIComponent(this.opDateFrom);
+    if(this.opDateTo)q+='&date_to='+encodeURIComponent(this.opDateTo);
+    const nmin=Number(this.opMinLikes);if(this.opMinLikes!==''&&this.opMinLikes!=null&&!Number.isNaN(nmin))q+='&min_likes='+encodeURIComponent(String(nmin));
+    const nmax=Number(this.opMaxLikes);if(this.opMaxLikes!==''&&this.opMaxLikes!=null&&!Number.isNaN(nmax))q+='&max_likes='+encodeURIComponent(String(nmax));
+    const lg=(this.opLang||'').trim();if(lg)q+='&lang='+encodeURIComponent(lg);
     const r=await this.api(q);
-    if(r.posts){this.oposts=r.posts;this.opostsTotal=r.total||r.posts.length;}
+    if(Array.isArray(r.posts)){this.oposts=r.posts;this.opostsTotal=typeof r.total==='number'?r.total:r.posts.length;}
+  },
+
+  applyOutreachPosts(){
+    this.opage=1;
+    this.loadOutreachPosts();
+  },
+
+  applyOutreachProfiles(){
+    this.prpage=1;
+    this.loadOutreachProfiles();
   },
 
   async loadOutreachProfiles(){
-    let q='/api/profiles?page='+this.prpage+'&page_size=80&sort='+encodeURIComponent(this.pfSort)+'&order=DESC';
-    const f=this.profFilters;
-    if(String(f.min_followers)!=='')q+='&min_followers='+encodeURIComponent(f.min_followers);
-    if(String(f.max_followers)!=='')q+='&max_followers='+encodeURIComponent(f.max_followers);
-    if(f.location)q+='&location='+encodeURIComponent(f.location);
-    if(f.blue!=='')q+='&blue='+encodeURIComponent(f.blue);
+    try{const el=document.getElementById('pf-bio-q');if(el&&typeof el.value==='string')this.pfBioSearch=el.value;}catch(_){}
+    const ord=this.pfSort==='username'?'ASC':'DESC';
+    let q='/api/profiles?page='+this.prpage+'&page_size=80&sort='+encodeURIComponent(this.pfSort)+'&order='+ord;
+    const nmin=Number(this.pfMinFollowers);if(this.pfMinFollowers!==''&&this.pfMinFollowers!=null&&!Number.isNaN(nmin))q+='&min_followers='+encodeURIComponent(String(nmin));
+    const nmax=Number(this.pfMaxFollowers);if(this.pfMaxFollowers!==''&&this.pfMaxFollowers!=null&&!Number.isNaN(nmax))q+='&max_followers='+encodeURIComponent(String(nmax));
+    const loc=(this.pfLocation||'').trim();if(loc)q+='&location='+encodeURIComponent(loc);
+    if(this.pfBlue!==''&&this.pfBlue!=null)q+='&blue='+encodeURIComponent(String(this.pfBlue));
+    const bioRaw=(this.pfBioSearch||'').trim();
+    if(bioRaw)q+='&bio_q='+encodeURIComponent(bioRaw);
     const r=await this.api(q);
-    if(r.profiles){this.oprProfiles=r.profiles;this.oprTotal=r.total||r.profiles.length;}
+    if(Array.isArray(r.profiles)){
+      this.oprProfiles=r.profiles;
+      this.oprTotal=typeof r.total==='number'?r.total:r.profiles.length;
+    }
+  },
+
+  resetProfFilters(){
+    this.pfBioSearch='';
+    this.pfMinFollowers='';
+    this.pfMaxFollowers='';
+    this.pfLocation='';
+    this.pfBlue='';
+    this.pfSort='discovered_at';
+    this.prpage=1;
+    this.loadOutreachProfiles();
   },
 
   async saveGetxKey(){
@@ -758,8 +834,18 @@ function app(){return{
   startRelinkFlow(account){this.relinkTarget=account;this.na={username:account.username,auth_token:'',ct0:'',mode:'direct'};this.authFlow={status:'idle'};this.showAdd=true;},
 
   async api(path,method='GET',body=null){
-    try{const o={method,headers:{'Content-Type':'application/json'}};if(body)o.body=JSON.stringify(body);return await(await fetch(path,o)).json();}
-    catch(e){return{error:e.message};}
+    try{
+      const o={method,headers:{'Content-Type':'application/json'}};if(body)o.body=JSON.stringify(body);
+      const res=await fetch(path,o);const text=await res.text();
+      const ct=(res.headers.get('content-type')||'').toLowerCase();
+      const looksJson=/^\s*[\[{]/.test(text);
+      if(ct.includes('application/json')||looksJson){
+        if(!text.trim())return res.ok?{}:{status:'error',error:'HTTP '+res.status,message:res.statusText};
+        try{return JSON.parse(text);}catch(e){return{status:'error',error:'Invalid JSON',message:String(e.message).slice(0,80)};}
+      }
+      const snippet=text.replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim().slice(0,200);
+      return{status:'error',error:'HTTP '+res.status,message:snippet||res.statusText||'Server returned HTML, not JSON'};
+    }catch(e){return{status:'error',error:e.message};}
   },
 
   async load(){await Promise.all([this.loadAccounts(),this.loadProfiles(),this.loadTasks(),this.loadAnalytics(),this.loadSettings(),this.loadPhase()]);if(this.tab==='outreach')this.switchOutreach(this.outreachSub);},

@@ -692,7 +692,12 @@ except Exception as e:
         print("[4/6] 📝 Writing server files...")
         APP_DIR.mkdir(parents=True, exist_ok=True)
         UI_DIR.mkdir(parents=True, exist_ok=True)
-        SERVER_PY.write_text(SERVER_CODE, encoding="utf-8")
+        # Do not overwrite repo/custom server.py — embedded SERVER_CODE is v9 and lacks
+        # newer API routes (e.g. /api/dashboard/feed, /api/run/search_getx). Fresh installs
+        # get the template; to force reset: delete server.py or set TW_FORCE_EMBEDDED_SERVER=1.
+        force_embedded = os.environ.get("TW_FORCE_EMBEDDED_SERVER", "").strip() in ("1", "true", "yes")
+        if not SERVER_PY.exists() or force_embedded:
+            SERVER_PY.write_text(SERVER_CODE, encoding="utf-8")
         # Only write AUTH_PY — keep existing index.html if present
         AUTH_PY.write_text(PLAYWRIGHT_SCRIPT, encoding="utf-8")
         if resolved_token:

@@ -15,20 +15,6 @@ def read_state():
     try:return json.loads(STATE_FILE.read_text(encoding='utf-8'))
     except:return{}
 
-def get_username(tok,ct):
-    for host in ['x.com','twitter.com']:
-        try:
-            req=urllib.request.Request(f'https://{host}/i/api/1.1/account/settings.json',
-                headers={'authorization':f'Bearer {BEARER}','cookie':f'auth_token={tok};ct0={ct}',
-                         'x-csrf-token':ct,'x-twitter-auth-type':'OAuth2Session',
-                         'user-agent':'Mozilla/5.0','x-twitter-active-user':'yes',
-                         'origin':f'https://{host}','referer':f'https://{host}/home'})
-            resp=urllib.request.urlopen(req,timeout=10)
-            name=json.loads(resp.read().decode()).get('screen_name','')
-            if name:return name
-        except:continue
-    return ''
-
 write_state({'status':'installing','message':'Preparing browser...'})
 try:import playwright as _pw
 except ImportError:
@@ -69,13 +55,12 @@ try:
             tok=cookies.get('auth_token','')
             ct=cookies.get('ct0','')
             if tok and ct and len(tok)>20:
-                username=get_username(tok,ct)
-                write_state({'status':'success','auth_token':tok,'ct0':ct,'username':username,'pid':pid})
+                write_state({'status':'success','auth_token':tok,'ct0':ct,'pid':pid})
                 time.sleep(3);break
         else:
             st=read_state()
             if st.get('status') not in('success','cancelled'):
-                write_state({'status':'error','error':'Timeout: login not completed within 3 minutes','pid':pid})
+                write_state({'status':'error','error':'Timeout: login not completed','pid':pid})
         try:browser.close()
         except:pass
 except Exception as e:

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-import os,sys,json,sqlite3,time,uuid,requests,subprocess as _sp,signal as _sg
+import os,sys,json,re,sqlite3,time,uuid,requests,subprocess as _sp,signal as _sg
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime,timezone
 from collections import deque
-from flask import Flask,jsonify,request,send_from_directory
+from flask import Flask,jsonify,request,send_from_directory,Response
 from flask_cors import CORS
 
 app=Flask(__name__,static_folder=str(Path(__file__).parent/'ui'),static_url_path='')
@@ -19,7 +19,7 @@ BEARER=('AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs'
 _LOG=deque(maxlen=500)
 
 def log(level,msg,extra=None):
-    e={'ts':datetime.utcnow().strftime('%H:%M:%S'),'level':level,'msg':msg}
+    e={'ts':datetime.now(timezone.utc).strftime('%H:%M:%S'),'level':level,'msg':msg}
     if extra:e['extra']=extra
     _LOG.append(e)
     print(f"[{e['ts']}] [{level}] {msg}")
@@ -30,7 +30,9 @@ def before_req():
         body=''
         try:body=str(request.get_json(silent=True) or '')[:80]
         except:pass
-        log('REQ',f"{request.method} {request.path}",body or None)
+        qs=request.query_string.decode('utf-8','replace') if request.query_string else ''
+        path=request.path+('?'+qs if qs else '')
+        log('REQ',f"{request.method} {path}",body or None)
 
 @app.after_request
 def after_req(resp):
@@ -49,6 +51,11 @@ def after_req(resp):
 def db():
     c=sqlite3.connect(DB_PATH);c.row_factory=sqlite3.Row
     c.execute('PRAGMA foreign_keys=ON');return c
+
+def _profile_text_search_term(q):
+    """Normalized substring for profile search (bio + display_name + username). Uses INSTR, not LIKE."""
+    s=(q or '').strip().lower()
+    return s if s else None
 
 def ensure_outreach_schema():
     """Idempotent schema sync for GetX outreach (matches tw_data migration v2)."""
@@ -102,7 +109,9 @@ def run_expert(name,params):
             if result is None:return d  # fallback: return full response
             return result
         log('ERR',f'run_expert({name}) HTTP {r.status_code}')
-        return {'status':'error','error':f'HTTP {r.status_code}'}
+        if r.status_code==404:
+            return{'status':'error','error':'HTTP 404','message':f'Эксперт «{name}» не найден в Extella. Загрузите: python sync_to_extella.py {name}'}
+        return {'status':'error','error':f'HTTP {r.status_code}','message':f'Extella вернула HTTP {r.status_code} для «{name}»'}
     except Exception as e:
         log('ERR',f'run_expert({name}): {str(e)[:100]}')
         return{'status':'error','error':str(e)}
@@ -127,6 +136,148 @@ def kv_get_auth(key):
         if r.status_code==200:return r.json().get('value','')
     except:pass
     return ''
+
+def _parse_getx_created_at(raw):
+    if not raw:
+        return datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+    raw=raw.strip()
+    try:
+        if re.match(r'^\d{4}-\d{2}-\d{2}',raw):
+            return raw[:19].replace(' ','T')+'Z' if 'T' not in raw[:19] else raw
+        dt=datetime.strptime(raw,'%a %b %d %H:%M:%S %z %Y')
+        return dt.astimezone(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+    except Exception:
+        return datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+
+def local_search_getx(body):
+    """GetX advanced_search + upsert into local DB_PATH. Extella expert runs on a worker FS — UI reads this machine's SQLite only."""
+    body=body or{}
+    q=(body.get('keywords')or'').strip()
+    if not q:
+        return{'status':'error','message':'keywords (q) is required'}
+    prod=body.get('product')or'Latest'
+    prod=prod if prod in('Latest','Top')else'Latest'
+    try:cap=max(1,min(int(body.get('max_posts')or 50),500))
+    except (TypeError,ValueError):cap=50
+    tok=(body.get('getx_api_token')or'').strip()
+    if not tok:
+        try:
+            c=db();r=c.execute("SELECT value FROM settings WHERE key='getx_api_token'").fetchone();c.close()
+            tok=(r['value']or'').strip() if r else''
+        except Exception:
+            tok=''
+    if not tok:
+        tok=(kv_get_auth('getx_api_token')or'').strip()
+    if not tok:
+        return{'status':'error','message':'Missing GetX API token. Save it in Settings.'}
+    base=os.environ.get('GETX_API_BASE','https://api.getxapi.com').rstrip('/')
+    headers={'Authorization':f'Bearer {tok}'}
+    cursor=None;pages=0;stored_posts=0;stored_profiles=set();seen=set();api_calls=0;last_err=''
+    consec_429=0;max_429=8
+    prof_sql="""
+        INSERT INTO profiles (
+            id, username, display_name, bio, location,
+            followers_count, following_count, tweet_count,
+            is_blue_verified, discovered_at, updated_at
+        ) VALUES (?,?,?,?,?,?,?,?,?,datetime('now'),datetime('now'))
+        ON CONFLICT(id) DO UPDATE SET
+            username=excluded.username,
+            display_name=excluded.display_name,
+            bio=excluded.bio,
+            location=excluded.location,
+            followers_count=excluded.followers_count,
+            following_count=excluded.following_count,
+            tweet_count=excluded.tweet_count,
+            is_blue_verified=excluded.is_blue_verified,
+            updated_at=datetime('now')
+    """
+    post_sql="""
+        INSERT INTO posts (
+            id, profile_id, text, url, posted_at,
+            likes, replies_count, retweets, views, lang, fetched_at
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,datetime('now'))
+        ON CONFLICT(id) DO UPDATE SET
+            profile_id=excluded.profile_id,
+            text=excluded.text,
+            url=excluded.url,
+            posted_at=excluded.posted_at,
+            likes=excluded.likes,
+            replies_count=excluded.replies_count,
+            retweets=excluded.retweets,
+            views=excluded.views,
+            lang=excluded.lang,
+            fetched_at=datetime('now')
+    """
+    try:
+        conn=sqlite3.connect(DB_PATH);conn.row_factory=sqlite3.Row;conn.execute('PRAGMA foreign_keys=ON')
+    except Exception as e:
+        return{'status':'error','message':str(e)}
+    while stored_posts<cap:
+        params={'q':q,'product':prod}
+        if cursor:params['cursor']=cursor
+        try:
+            r=requests.get(f'{base}/twitter/tweet/advanced_search',params=params,headers=headers,timeout=60)
+            api_calls+=1
+        except Exception as e:
+            last_err=str(e)[:200];log('ERR',f'local_search_getx HTTP: {last_err}');break
+        if r.status_code==429:
+            consec_429+=1;last_err='rate_limited'
+            if consec_429>=max_429:last_err='rate_limited_stopped';break
+            time.sleep(2.5);continue
+        consec_429=0
+        if r.status_code!=200:
+            try:last_err=(r.json().get('error')or r.text[:120])
+            except Exception:last_err=r.text[:120]or f'HTTP {r.status_code}'
+            log('ERR',f'local_search_getx GetX {r.status_code}: {last_err}');break
+        try:data=r.json()
+        except Exception:last_err='invalid JSON';break
+        tweets=data.get('tweets')or[]
+        has_more=bool(data.get('has_more')or data.get('hasMore'))
+        next_c=data.get('next_cursor')or data.get('nextCursor')
+        pages+=1
+        log('INFO',f'local_search_getx page={pages} tweets={len(tweets)}')
+        for tw in tweets:
+            if stored_posts>=cap:break
+            tid=str(tw.get('id')or'')
+            if not tid or tid in seen:continue
+            seen.add(tid)
+            author=tw.get('author')or{}
+            aid=str(author.get('id')or'')
+            if not aid:continue
+            uname=(author.get('userName')or author.get('username')or'').strip()
+            if not uname:continue
+            disp=(author.get('name')or'').strip()
+            bio=(author.get('description')or'').strip()
+            loc=(author.get('location')or'').strip()
+            followers=int(author.get('followers')or 0)
+            following=int(author.get('following')or 0)
+            twcount=int(author.get('tweets')or author.get('statusesCount')or 0)
+            blue=1 if author.get('isBlueVerified')or author.get('is_blue_verified')else 0
+            try:
+                conn.execute(prof_sql,(aid,uname,disp,bio,loc,followers,following,twcount,blue))
+                stored_profiles.add(aid)
+                text=(tw.get('text')or'').strip()
+                url=(tw.get('url')or tw.get('twitterUrl')or'').strip()
+                posted=_parse_getx_created_at(tw.get('createdAt')or'')
+                likes=int(tw.get('likeCount')or tw.get('like_count')or 0)
+                rep=int(tw.get('replyCount')or tw.get('reply_count')or 0)
+                rts=int(tw.get('retweetCount')or tw.get('retweet_count')or 0)
+                views=int(tw.get('viewCount')or tw.get('view_count')or 0)
+                lang=(tw.get('lang')or'').strip()or None
+                conn.execute(post_sql,(tid,aid,text,url,posted,likes,rep,rts,views,lang))
+            except sqlite3.OperationalError as e:
+                last_err=str(e);log('ERR',f'local_search_getx DB: {e}');conn.close()
+                return{'status':'error','message':last_err,'posts_saved':stored_posts}
+            stored_posts+=1
+        conn.commit()
+        if stored_posts>=cap:break
+        if not tweets:break
+        if not has_more or not next_c:break
+        cursor=next_c
+    conn.close()
+    log('INFO',f'local_search_getx done posts={stored_posts} profiles={len(stored_profiles)} api_calls={api_calls}')
+    return{'status':'success','posts_saved':stored_posts,'profiles_upserted':len(stored_profiles),
+           'api_calls':api_calls,'pages':pages,'query':q,'last_error':last_err or None}
 
 # ════════════════════════════════════════════════════════
 # INLINE Twitter session validator — no nested expert call
@@ -244,6 +395,9 @@ def _check_twitter_session(auth_token,ct0):
     }
 
 # ── Health ────────────────────────────────────────────────
+@app.route('/favicon.ico')
+def favicon():return Response(status=204)
+
 @app.route('/api/health')
 def health():return jsonify({'status':'ok','ts':datetime.utcnow().isoformat(),'logs':len(_LOG)})
 
@@ -418,7 +572,17 @@ def get_profiles():
         try:cl.append('followers_count<=?');pl.append(int(xf))
         except ValueError:pass
     if loc:cl.append('location LIKE ?');pl.append('%'+loc.replace('%','')+'%')
-    if blue in('0','1'):cl.append('is_blue_verified=?');pl.append(int(blue))
+    if blue=='1':
+        cl.append('is_blue_verified=?');pl.append(1)
+    elif blue=='0':
+        cl.append('(is_blue_verified IS NULL OR is_blue_verified=0)')
+    raw=(request.args.get('bio_q') or request.args.get('q') or '').strip()
+    bt=_profile_text_search_term(raw)
+    if bt is not None:
+        cl.append(
+            "(instr(lower(coalesce(bio,'') || ' ' || coalesce(display_name,'') || ' ' || coalesce(username,'')), ?) > 0)"
+        )
+        pl.append(bt)
     w=('WHERE '+' AND '.join(cl)) if cl else ''
     total=conn.execute(f'SELECT COUNT(*) FROM profiles {w}',pl).fetchone()[0]
     pl2=pl+[ps,offset]
@@ -525,7 +689,7 @@ def run_post():return jsonify(run_expert('tw_post',request.json or{}))
 @app.route('/api/run/monitor',methods=['POST'])
 def run_monitor():return jsonify(run_expert('tw_monitor',{'action':'check'}))
 @app.route('/api/run/search_getx',methods=['POST'])
-def run_search_getx():return jsonify(run_expert('tw_search_getx',request.json or{}))
+def run_search_getx():return jsonify(local_search_getx(request.json or{}))
 @app.route('/api/run/queue',methods=['POST'])
 def run_queue():return jsonify(run_expert('tw_queue',request.json or{}))
 

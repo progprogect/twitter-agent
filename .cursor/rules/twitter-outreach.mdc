@@ -3,11 +3,12 @@ description: Twitter Lead Agent — GetX outreach, Flask, Extella experts
 globs:
   - "**/*.py"
   - "ui/**/*.html"
-alwaysApply: false
+alwaysApply: true
 ---
 
 # Twitter Outreach (GetX)
 
+- **Локальные данные (SQLite, любые файлы на диске пользователя)** — только в **`server.py` (Flask)**. Эксперты Extella выполняются на **изолированных воркерах**, не на Mac пользователя: пути вроде `~/Documents/...` там указывают на ФС воркера, не на локальный `data.db` UI. Чтение/запись БД и файлов из эксперта — ошибочная модель; переносить ingest/API-вызовы с записью в SQLite в Flask (как `local_search_getx`).
 - **Поиск и наполнение `posts`/`profiles` для outreach** — через **GetXAPI**: https://docs.getxapi.com/docs (`GET /twitter/tweet/advanced_search`, Bearer `getx_api_token`).
 - Локальный канон: `server.py`, `ui/index.html`; логика экспертов в `experts/` → после правок `python sync_to_extella.py <name>|--all`.
 - Ключ GetX: UI/settings + зеркало в KV; не хардкодить; не смешивать с Twitter session и `extella_api_token`.
