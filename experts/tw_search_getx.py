@@ -175,7 +175,7 @@ def tw_search_getx(
             break
 
         tweets = data.get("tweets") or []
-        has_more = bool(data.get("has_more"))
+        has_more = bool(data.get("has_more") or data.get("hasMore"))
         next_c = data.get("next_cursor") or data.get("nextCursor")
         pages += 1
         print(f"[3/6] 📄 page {pages} tweets={len(tweets)} has_more={has_more}")
