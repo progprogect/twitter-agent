@@ -279,6 +279,94 @@ def local_search_getx(body):
     return{'status':'success','posts_saved':stored_posts,'profiles_upserted':len(stored_profiles),
            'api_calls':api_calls,'pages':pages,'query':q,'last_error':last_err or None}
 
+def _openai_reply_text(api_key,post_text,reply_intent):
+    """POST chat/completions; returns stripped reply or raises."""
+    prompt=(
+        f'Write a short engaging Twitter reply (max 200 chars) to this tweet: {post_text}\n'
+        f'Reply intent: {reply_intent}\n'
+        'Reply only with the reply text, no quotes.'
+    )
+    r=requests.post(
+        'https://api.openai.com/v1/chat/completions',
+        headers={'Authorization':f'Bearer {api_key}','Content-Type':'application/json'},
+        json={'model':'gpt-4o-mini','messages':[{'role':'user','content':prompt}],'max_tokens':200},
+        timeout=60,
+    )
+    r.raise_for_status()
+    data=r.json()
+    ch=(data.get('choices')or[{}])[0]or{}
+    msg=(ch.get('message')or{})
+    t=(msg.get('content')or'').strip()
+    if len(t)>=2 and t[0]==t[-1] and t[0] in'"\'':
+        t=t[1:-1].strip()
+    return t[:280] if t else ''
+
+def local_create_batch(body):
+    """Create reply_tasks in local SQLite with OpenAI replies. tw_queue on Extella uses worker FS — UI reads this machine's DB only."""
+    body=body or{}
+    if (body.get('action')or'create_batch')!='create_batch':
+        return{'status':'error','message':'Only action=create_batch is supported'}
+    raw=body.get('post_ids')or''
+    if isinstance(raw,(list,tuple)):
+        ids=[str(p).strip() for p in raw if str(p).strip()]
+    else:
+        ids=[p.strip() for p in str(raw).split(',')if p.strip()]
+    if not ids:
+        return{'status':'error','message':'post_ids required'}
+    reply_intent=(body.get('reply_intent')or'').strip()or'helpful and curious'
+    acct_in=(str(body.get('account_id')or'').strip()or None)
+    try:
+        conn=db()
+    except Exception as e:
+        return{'status':'error','message':str(e)}
+    row_key=conn.execute("SELECT value FROM settings WHERE key=?",('openai_api_key',)).fetchone()
+    api_key=(row_key['value']or'').strip() if row_key else''
+    tasks_out,failures=[],[]
+    for post_id in ids:
+        prow=conn.execute(
+            'SELECT id, text, profile_id, url FROM posts WHERE id=?',(post_id,)
+        ).fetchone()
+        if not prow:
+            failures.append({'post_id':post_id,'reason':'post not found'})
+            continue
+        post_text=prow['text']or''
+        profile_id=prow['profile_id']
+        account_id=acct_in
+        if not account_id:
+            ar=conn.execute('SELECT id FROM accounts WHERE is_active=1 LIMIT 1').fetchone()
+            account_id=ar['id'] if ar else None
+        if api_key:
+            try:
+                gen=_openai_reply_text(api_key,post_text,reply_intent)
+                if not gen:
+                    gen='[AI generation failed — edit reply here]'
+            except Exception as e:
+                log('ERR',f'local_create_batch OpenAI: {str(e)[:120]}')
+                gen='[AI generation failed — edit reply here]'
+        else:
+            gen='[AI key not configured — edit reply here]'
+        ex=conn.execute('SELECT id FROM reply_tasks WHERE post_id=?',(post_id,)).fetchone()
+        is_dup=1 if ex else 0
+        tid=str(uuid.uuid4())
+        conn.execute(
+            """INSERT INTO reply_tasks
+            (id, post_id, profile_id, account_id, generated_reply, reply_intent, status, is_duplicate, created_at)
+            VALUES (?,?,?,?,?,?,'pending',?,datetime('now'))""",
+            (tid,post_id,profile_id,account_id,gen,reply_intent,is_dup),
+        )
+        tasks_out.append({
+            'task_id':tid,'post_id':post_id,'is_duplicate':bool(is_dup),
+            'reply':(gen[:80]+'…')if len(gen)>80 else gen,
+        })
+    conn.commit();conn.close()
+    n=len(tasks_out)
+    log('INFO',f'local_create_batch created={n} failed={len(failures)}')
+    return{
+        'status':'success','created':n,'tasks':tasks_out,
+        'tasks_created':n,'tasks_failed':len(failures),'failures':failures,
+        'duplicate_warnings':sum(1 for t in tasks_out if t.get('is_duplicate')),
+    }
+
 # ════════════════════════════════════════════════════════
 # INLINE Twitter session validator — no nested expert call
 # Called directly from validate_account endpoint
@@ -691,7 +779,7 @@ def run_monitor():return jsonify(run_expert('tw_monitor',{'action':'check'}))
 @app.route('/api/run/search_getx',methods=['POST'])
 def run_search_getx():return jsonify(local_search_getx(request.json or{}))
 @app.route('/api/run/queue',methods=['POST'])
-def run_queue():return jsonify(run_expert('tw_queue',request.json or{}))
+def run_queue():return jsonify(local_create_batch(request.json or{}))
 
 # ── Analytics ────────────────────────────────────────────
 @app.route('/api/analytics',methods=['GET'])
