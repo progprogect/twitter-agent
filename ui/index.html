@@ -433,6 +433,7 @@ form.filter-panel{margin:0;display:block;}
           <select id="sel-task-status" name="task_status" class="sel" x-model="tF" @change="loadTasks()"><option value="pending">⏳ Pending</option><option value="approved">✅ Approved</option><option value="posted">🚀 Posted</option><option value="rejected">❌ Rejected</option></select>
           <button x-show="tF==='approved'&&tasks.length>0" class="btn btn-primary btn-sm" @click="postAll()">🚀 Post All</button>
           <button x-show="tF==='pending'&&tasks.length>0" class="btn btn-success btn-sm" @click="bulkApprove()">✓ Approve All</button>
+          <button class="btn btn-outline btn-sm" @click="runMonitor()" title="Check for replies to posted tweets">📡 Monitor</button>
           <span style="font-size:11.5px;color:var(--t3);margin-left:auto" x-text="tasks.length+' tasks'"></span>
         </div>
         <div x-show="tasks.length===0" class="empty"><div class="empty-icon" x-text="tF==='pending'?'⏳':tF==='posted'?'🚀':'📭'"></div><div class="empty-h" x-text="'No '+tF+' tasks'"></div></div>
@@ -731,6 +732,7 @@ function app(){return{
       action:'create_batch',
       post_ids:this.selectedPostIds.join(','),
       reply_intent:this.genModal.intent||'helpful and curious',
+      account_id:this.acct||'',
       account_id:this.acct||''
     });
     this.genModal.open=false;
@@ -937,7 +939,7 @@ function app(){return{
     if(r.status==='success'){t._ed=false;t.final_reply=t._txt;this.showToast('Saved ✅','💾');}
   },
   async bulkApprove(){const ids=this.tasks.filter(t=>t.status==='pending').map(t=>t.id);if(!ids.length)return;await this.api('/api/tasks/bulk','POST',{action:'approve',task_ids:ids});this.showToast('All '+ids.length+' approved ✅','✅');await this.loadTasks();},
-  async postAll(){this.showToast('Posting...','🚀');await this.api('/api/run/post','POST',{});setTimeout(()=>this.loadTasks(),5000);},
+  async postAll(){this.showToast('Posting...','🚀');await this.api('/api/run/post','POST',{account_id:this.acct||''});setTimeout(()=>this.loadTasks(),5000);},
   async saveSetting(k,v){await this.api('/api/settings','PATCH',{[k]:v});this.showToast('Saved','💾');},
 
   async runMonitor(){
