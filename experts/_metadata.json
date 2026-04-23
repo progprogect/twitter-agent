@@ -136,6 +136,19 @@
       "topics": ""
     }
   },
+  "tw_search_getx": {
+    "name": "tw_search_getx",
+    "description": "Twitter Outreach — GetXAPI advanced_search with cursor pagination, upsert profiles/posts into SQLite. Docs: https://docs.getxapi.com/docs — GET /twitter/tweet/advanced_search, Bearer getx_api_token in KV. Parameters: keywords (q); max_posts; product Latest|Top; getx_api_token optional override; getx_api_key_name; db_path_key; extella_token_key",
+    "kwargs": {
+      "keywords": "",
+      "max_posts": 50,
+      "product": "Latest",
+      "getx_api_token": "",
+      "getx_api_key_name": "getx_api_token",
+      "db_path_key": "tw_db_path",
+      "extella_token_key": "extella_api_token"
+    }
+  },
   "tw_queue": {
     "name": "tw_queue",
     "description": "Twitter Lead Agent — Task Queue Manager. Manages the reply task lifecycle with strict FSM (Finite State Machine) transitions: pending→approved/rejected, approved→posting→posted/failed, failed→pending (retry). Supports batch creation from tw_generate results, individual and bulk approve/reject, edit reply text, duplicate detection across all accounts, paginated listing. Parameters: action — create_batch/list/approve/reject/edit/get_stats/bulk_approve/bulk_reject/retry_failed; task_ids — comma-separated UUIDs; edited_reply — new reply text for edit action; account_id — account for create_batch; post_ids — comma-separated post IDs for create_batch; reply_intent — intent for batch creation; status_filter — pending/approved/rejected/posting/posted/failed; page/page_size — pagination; db_path_key — KV key for SQLite; extella_token_key — KV key for Extella API token",

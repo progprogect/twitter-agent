@@ -420,29 +420,12 @@ def tw_discover(
                         "or try different keywords.")
         }
 
-    # ── STEP 5: Score & tier ──────────────────────────────────────
-    print(f"[7/8] 🏆 Scoring...")
-    tier_breakdown = {1: 0, 2: 0, 3: 0}
-
-    def safe_norm(vals):
-        mn, mx = min(vals), max(vals)
-        return [(v-mn)/(mx-mn) if mx!=mn else 0.5 for v in vals]
-
-    fn = safe_norm([p["followers_count"]   for p in enriched])
-    en = safe_norm([p["engagement_rate"]   for p in enriched])
-    fr = safe_norm([p["posting_frequency"] for p in enriched])
-    ln = safe_norm([p["avg_likes"]         for p in enriched])
-    for i, p in enumerate(enriched):
-        p["tier_score"] = round(0.35*en[i]+0.30*fn[i]+0.20*fr[i]+0.15*ln[i], 4)
-
-    enriched.sort(key=lambda x: x["tier_score"], reverse=True)
-    nv = len(enriched)
-    t1, t2 = max(1, int(nv*0.20)), max(2, int(nv*0.50))
-    for i, p in enumerate(enriched):
-        p["tier"] = 1 if i < t1 else 2 if i < t2 else 3
-
-    for p in enriched: tier_breakdown[p["tier"]] = tier_breakdown.get(p["tier"], 0) + 1
-    print(f"[7/8] ✅ T1={tier_breakdown[1]} T2={tier_breakdown[2]} T3={tier_breakdown[3]}")
+    # ── No tier scoring (outreach pipeline uses GetX). Defaults only ──
+    print("[7/8] ✅ Skipping tier scoring (deprecated)")
+    tier_breakdown = {1: 0, 2: 0, 3: len(enriched)}
+    for p in enriched:
+        p["tier"] = 3
+        p["tier_score"] = 0.0
 
     if dry_run:
         print("[8/8] 🔍 Dry run complete")
@@ -451,7 +434,7 @@ def tw_discover(
             "tier_breakdown": tier_breakdown, "ai_source": ai_source,
             "search_queries_used": search_queries, "topic_keywords": topic_keywords,
             "preview": [{"username": p["username"], "followers": p["followers_count"],
-                         "tier": p["tier"], "engagement_rate": p["engagement_rate"]}
+                         "engagement_rate": p["engagement_rate"]}
                         for p in enriched[:5]]
         }
 
@@ -471,6 +454,6 @@ def tw_discover(
         "topic_keywords":      topic_keywords,
         "method":              "graphql_route_intercept_v6.3",
         "profiles": [{"username": p["username"], "followers": p["followers_count"],
-                      "tier": p["tier"], "engagement_rate": p["engagement_rate"]}
+                      "engagement_rate": p["engagement_rate"]}
                      for p in enriched]
     }

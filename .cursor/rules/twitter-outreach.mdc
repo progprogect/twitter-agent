@@ -1,0 +1,15 @@
+---
+description: Twitter Lead Agent — GetX outreach, Flask, Extella experts
+globs:
+  - "**/*.py"
+  - "ui/**/*.html"
+alwaysApply: false
+---
+
+# Twitter Outreach (GetX)
+
+- **Поиск и наполнение `posts`/`profiles` для outreach** — через **GetXAPI**: https://docs.getxapi.com/docs (`GET /twitter/tweet/advanced_search`, Bearer `getx_api_token`).
+- Локальный канон: `server.py`, `ui/index.html`; логика экспертов в `experts/` → после правок `python sync_to_extella.py <name>|--all`.
+- Ключ GetX: UI/settings + зеркало в KV; не хардкодить; не смешивать с Twitter session и `extella_api_token`.
+- Миграции SQLite — через `tw_data` (`action: migrate`) или идемпотентный блок в `server.ensure_outreach_schema`.
+- Тиры в продуктовом флоу не используются; не возвращать tier-фильтры из основного API.

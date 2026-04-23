@@ -302,8 +302,15 @@ def tw_test_suite(
         return code == 200 and "profiles" in body and "total" in body, f"HTTP {code}, total={body.get('total',0)}"
 
     def t_srv_profiles_filter():
-        code, body = flask_get("/api/profiles?tier=1&sort=followers_count")
-        return code == 200 and "profiles" in body, f"HTTP {code}, tier1={len(body.get('profiles',[]))}"
+        code, body = flask_get("/api/profiles?sort=followers_count&blue=0")
+        return code == 200 and "profiles" in body, f"HTTP {code}, n={len(body.get('profiles',[]))}"
+
+    def t_srv_dashboard_feed():
+        code, body = flask_get("/api/dashboard/feed")
+        return (
+            code == 200 and "items" in body and body.get("status") == "success",
+            f"HTTP {code}, items={len(body.get('items',[]))}",
+        )
 
     def t_srv_posts():
         code, body = flask_get("/api/posts")
@@ -457,7 +464,8 @@ def tw_test_suite(
     test("Server /api/health → 200 ok", "server", t_srv_health)
     test("Server /api/accounts → 200 with accounts list", "server", t_srv_accounts)
     test("Server /api/profiles → 200 with profiles", "server", t_srv_profiles)
-    test("Server /api/profiles?tier=1 filter works", "server", t_srv_profiles_filter)
+    test("Server /api/profiles filters (blue/sort)", "server", t_srv_profiles_filter)
+    test("Server /api/dashboard/feed → 200", "server", t_srv_dashboard_feed)
     test("Server /api/posts → 200 with posts", "server", t_srv_posts)
     test("Server /api/tasks?status=pending → 200", "server", t_srv_tasks_pending)
     test("Server /api/tasks?status=approved → 200", "server", t_srv_tasks_approved)

@@ -70,4 +70,5 @@ python sync_to_extella.py --list
 - OK: tw_patch_validate_endpoint
 - OK: tw_ui_v2_patch
 - OK: tw_project_tracker
+- OK: tw_search_getx
 

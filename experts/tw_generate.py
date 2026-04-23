@@ -89,7 +89,7 @@ def tw_generate(
     print("[2/5] 📖 Loading post and profile context...")
     post_text, post_url, post_lang = "", "", "en"
     profile_username, profile_bio, profile_followers = "", "", 0
-    profile_persona, profile_topics, profile_tier = "general", "[]", 3
+    profile_persona, profile_topics = "general", "[]"
 
     conn = get_conn()
     if post_id:
@@ -109,7 +109,6 @@ def tw_generate(
             profile_followers = row["followers_count"] or 0
             profile_persona = row["persona_type"] or "general"
             profile_topics = row["topic_tags"] or "[]"
-            profile_tier = row["tier"] or 3
     conn.close()
 
     if not post_text and mode == "single":
@@ -137,7 +136,6 @@ Profile context:
 - Bio: {profile_bio[:200] if profile_bio else 'No bio'}
 - Followers: {profile_followers:,}
 - Topics: {topics_str}
-- Tier: {profile_tier} (1=highest priority)
 
 RULES:
 - Maximum 280 characters (this is CRITICAL)

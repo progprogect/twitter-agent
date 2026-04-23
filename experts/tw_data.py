@@ -122,6 +122,7 @@ CREATE TABLE IF NOT EXISTS profiles (
     custom_fields      TEXT DEFAULT '{}',
     discovery_keywords TEXT,
     primary_language   TEXT DEFAULT 'en',
+    is_blue_verified   INTEGER DEFAULT 0,
     discovered_at      TEXT DEFAULT (datetime('now')),
     updated_at         TEXT DEFAULT (datetime('now'))
 );
@@ -199,8 +200,13 @@ CREATE TABLE IF NOT EXISTS settings (
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_profiles_tier      ON profiles(tier);
 CREATE INDEX IF NOT EXISTS idx_profiles_keywords  ON profiles(discovery_keywords);
+CREATE INDEX IF NOT EXISTS idx_profiles_followers ON profiles(followers_count);
+CREATE INDEX IF NOT EXISTS idx_profiles_blue      ON profiles(is_blue_verified);
+CREATE INDEX IF NOT EXISTS idx_profiles_location  ON profiles(location);
 CREATE INDEX IF NOT EXISTS idx_posts_profile      ON posts(profile_id);
 CREATE INDEX IF NOT EXISTS idx_posts_time         ON posts(posted_at);
+CREATE INDEX IF NOT EXISTS idx_posts_likes        ON posts(likes);
+CREATE INDEX IF NOT EXISTS idx_posts_lang         ON posts(lang);
 CREATE INDEX IF NOT EXISTS idx_tasks_status       ON reply_tasks(status);
 CREATE INDEX IF NOT EXISTS idx_tasks_account      ON reply_tasks(account_id);
 CREATE INDEX IF NOT EXISTS idx_analytics_acc_date ON analytics(account_id, date);
@@ -218,6 +224,7 @@ CREATE INDEX IF NOT EXISTS idx_conv_task          ON conversations(reply_task_id
         ("onboarding_complete",  "false"),
         ("last_heartbeat",       ""),
         ("app_version",          "1.0.0"),
+        ("getx_api_token",       ""),
     ]
 
     def get_conn():
@@ -268,17 +275,40 @@ CREATE INDEX IF NOT EXISTS idx_conv_task          ON conversations(reply_task_id
     elif action == "migrate":
         conn = get_conn()
         cur_ver = conn.execute("SELECT MAX(version) FROM schema_version").fetchone()[0] or 0
-        MIGRATIONS: dict = {}  # {2: "ALTER TABLE ...", 3: "..."}
+
+        def _cols(table):
+            return {r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+
+        MIGRATIONS = {
+            2: "profiles_getx_v2",
+        }
 
         applied = []
-        for ver, sql in sorted(MIGRATIONS.items()):
-            if ver > cur_ver:
-                conn.execute(sql)
+        for ver, mig in sorted(MIGRATIONS.items()):
+            if ver <= cur_ver:
+                continue
+            if mig == "profiles_getx_v2":
+                pc = _cols("profiles")
+                if "is_blue_verified" not in pc:
+                    conn.execute(
+                        "ALTER TABLE profiles ADD COLUMN is_blue_verified INTEGER DEFAULT 0"
+                    )
+                for stmt in (
+                    "CREATE INDEX IF NOT EXISTS idx_profiles_followers ON profiles(followers_count)",
+                    "CREATE INDEX IF NOT EXISTS idx_profiles_blue ON profiles(is_blue_verified)",
+                    "CREATE INDEX IF NOT EXISTS idx_profiles_location ON profiles(location)",
+                    "CREATE INDEX IF NOT EXISTS idx_posts_likes ON posts(likes)",
+                    "CREATE INDEX IF NOT EXISTS idx_posts_lang ON posts(lang)",
+                ):
+                    conn.execute(stmt)
                 conn.execute(
-                    "INSERT INTO schema_version (version, description) VALUES (?, ?)",
-                    (ver, f"Migration {ver}")
+                    "INSERT OR IGNORE INTO settings (key, value) VALUES ('getx_api_token', '')"
                 )
-                applied.append(ver)
+            conn.execute(
+                "INSERT INTO schema_version (version, description) VALUES (?, ?)",
+                (ver, f"Migration {ver}: {mig}"),
+            )
+            applied.append(ver)
 
         conn.commit()
         new_ver = conn.execute("SELECT MAX(version) FROM schema_version").fetchone()[0]

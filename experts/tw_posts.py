@@ -150,7 +150,9 @@ def tw_posts(
             f"SELECT id, username FROM profiles WHERE id IN ({','.join(['?']*len(ids))})", ids
         ).fetchall()
     else:
-        rows = conn.execute("SELECT id, username FROM profiles ORDER BY tier ASC LIMIT 50").fetchall()
+        rows = conn.execute(
+            "SELECT id, username FROM profiles ORDER BY followers_count DESC LIMIT 50"
+        ).fetchall()
     conn.close()
 
     profiles_to_fetch = [dict(r) for r in rows]

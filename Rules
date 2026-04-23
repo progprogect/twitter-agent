@@ -119,7 +119,16 @@ python sync_to_extella.py --list
 ├── tw_post.py           ← постинг через Playwright
 │   └── reads: localhost:7842/api/credentials/{id}
 ├── tw_monitor.py        ← мониторинг ответов
+├── tw_search_getx.py    ← поиск твитов через GetXAPI (outreach)
 └── tw_debug.py          ← диагностика
+
+## GetXAPI (outreach-поиск)
+- Документация: https://docs.getxapi.com/docs
+- Base URL: https://api.getxapi.com — заголовок Authorization: Bearer <ключ>
+- Основной эндпоинт сценария: GET /twitter/tweet/advanced_search (q, product Latest|Top, cursor)
+- Ключ хранить в settings + KV под именем getx_api_token (не путать с extella_api_token, Twitter session, AI keys)
+- Постинг от имени аккаунта — отдельный контур (Playwright / tw_post), не смешивать с GetX
+
 SQLite таблицы (data.db):
 accounts, profiles, posts, reply_tasks,
 conversations, analytics, settings, workflow_state9. КРИТИЧЕСКИЕ НЮАНСЫ ЭТОГО ПРОЕКТАCredentials proxy:

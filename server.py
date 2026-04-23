@@ -50,6 +50,37 @@ def db():
     c=sqlite3.connect(DB_PATH);c.row_factory=sqlite3.Row
     c.execute('PRAGMA foreign_keys=ON');return c
 
+def ensure_outreach_schema():
+    """Idempotent schema sync for GetX outreach (matches tw_data migration v2)."""
+    try:
+        p=Path(DB_PATH)
+        if not p.exists():return
+        c=sqlite3.connect(DB_PATH);c.row_factory=sqlite3.Row;c.execute('PRAGMA foreign_keys=ON')
+        if not c.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='profiles'").fetchone():
+            c.close();return
+        cols={r[1] for r in c.execute('PRAGMA table_info(profiles)')}
+        if 'is_blue_verified' not in cols:
+            c.execute('ALTER TABLE profiles ADD COLUMN is_blue_verified INTEGER DEFAULT 0')
+        for stmt in (
+            'CREATE INDEX IF NOT EXISTS idx_profiles_followers ON profiles(followers_count)',
+            'CREATE INDEX IF NOT EXISTS idx_profiles_blue ON profiles(is_blue_verified)',
+            'CREATE INDEX IF NOT EXISTS idx_profiles_location ON profiles(location)',
+            'CREATE INDEX IF NOT EXISTS idx_posts_likes ON posts(likes)',
+            'CREATE INDEX IF NOT EXISTS idx_posts_lang ON posts(lang)',
+        ):
+            try:c.execute(stmt)
+            except sqlite3.OperationalError:pass
+        c.execute("INSERT OR IGNORE INTO settings (key,value) VALUES ('getx_api_token','')")
+        if c.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='schema_version'").fetchone():
+            ver=(c.execute('SELECT MAX(version) FROM schema_version').fetchone() or [0])[0] or 0
+            if ver<2:
+                c.execute("INSERT INTO schema_version (version, description) VALUES (2,'outreach getx v2')")
+        c.commit();c.close()
+    except Exception as e:
+        log('WARN',f'ensure_outreach_schema: {e}')
+
+ensure_outreach_schema()
+
 def get_token():
     t=API_TOKEN
     if not t:
@@ -371,23 +402,71 @@ def remove_account(aid):return jsonify(run_expert('tw_auth',{'action':'remove','
 # ── Profiles ─────────────────────────────────────────────
 @app.route('/api/profiles',methods=['GET'])
 def get_profiles():
-    conn=db();tier=request.args.get('tier','');sort=request.args.get('sort','tier_score')
+    conn=db();sort=request.args.get('sort','discovered_at')
     order=request.args.get('order','DESC');page=max(1,int(request.args.get('page',1)))
     ps=min(100,int(request.args.get('page_size',50)));offset=(page-1)*ps
-    ss=sort if sort in('tier','tier_score','followers_count','engagement_rate','discovered_at') else 'tier_score'
+    ss=sort if sort in('followers_count','discovered_at','engagement_rate','username') else 'discovered_at'
     so='DESC' if order.upper()=='DESC' else 'ASC'
-    w='WHERE tier=?' if tier else '';p=([tier] if tier else [])+[ps,offset]
-    total=conn.execute(f'SELECT COUNT(*) FROM profiles {w}',[tier] if tier else []).fetchone()[0]
-    rows=conn.execute(f'SELECT * FROM profiles {w} ORDER BY {ss} {so} LIMIT ? OFFSET ?',p).fetchall()
+    cl,pl=[],[]
+    mf=request.args.get('min_followers','');xf=request.args.get('max_followers','')
+    loc=(request.args.get('location') or '').strip()
+    blue=(request.args.get('blue') or '').strip()
+    if mf!='':
+        try:cl.append('followers_count>=?');pl.append(int(mf))
+        except ValueError:pass
+    if xf!='':
+        try:cl.append('followers_count<=?');pl.append(int(xf))
+        except ValueError:pass
+    if loc:cl.append('location LIKE ?');pl.append('%'+loc.replace('%','')+'%')
+    if blue in('0','1'):cl.append('is_blue_verified=?');pl.append(int(blue))
+    w=('WHERE '+' AND '.join(cl)) if cl else ''
+    total=conn.execute(f'SELECT COUNT(*) FROM profiles {w}',pl).fetchone()[0]
+    pl2=pl+[ps,offset]
+    rows=conn.execute(f'SELECT * FROM profiles {w} ORDER BY {ss} {so} LIMIT ? OFFSET ?',pl2).fetchall()
     conn.close();return jsonify({'profiles':[dict(r) for r in rows],'total':total,'page':page,'status':'success'})
 
 # ── Posts ────────────────────────────────────────────────
 @app.route('/api/posts',methods=['GET'])
 def get_posts():
-    conn=db();pid=request.args.get('profile_id','')
-    w='WHERE profile_id=?' if pid else ''
-    rows=conn.execute(f'SELECT * FROM posts {w} ORDER BY posted_at DESC LIMIT 100',[pid] if pid else []).fetchall()
-    conn.close();return jsonify({'posts':[dict(r) for r in rows],'status':'success'})
+    conn=db();cl,pl=[],[]
+    pid=request.args.get('profile_id','')
+    if pid:cl.append('profile_id=?');pl.append(pid)
+    df=(request.args.get('date_from') or '').strip()
+    dt=(request.args.get('date_to') or '').strip()
+    if df:cl.append("date(substr(posted_at,1,10)) >= date(?)");pl.append(df[:10])
+    if dt:cl.append("date(substr(posted_at,1,10)) <= date(?)");pl.append(dt[:10])
+    ml=request.args.get('min_likes','');xl=request.args.get('max_likes','')
+    if ml!='':
+        try:cl.append('likes>=?');pl.append(int(ml))
+        except ValueError:pass
+    if xl!='':
+        try:cl.append('likes<=?');pl.append(int(xl))
+        except ValueError:pass
+    lg=(request.args.get('lang') or '').strip()
+    if lg:cl.append('lang=?');pl.append(lg)
+    w=('WHERE '+' AND '.join(cl)) if cl else ''
+    order=request.args.get('order','DESC');so='DESC' if order.upper()=='DESC' else 'ASC'
+    page=max(1,int(request.args.get('page',1)));ps=min(100,int(request.args.get('page_size',50)))
+    offset=(page-1)*ps
+    total=conn.execute(f'SELECT COUNT(*) FROM posts {w}',pl).fetchone()[0]
+    pl2=pl+[ps,offset]
+    rows=conn.execute(f'SELECT * FROM posts {w} ORDER BY posted_at {so} LIMIT ? OFFSET ?',pl2).fetchall()
+    conn.close();return jsonify({'posts':[dict(r) for r in rows],'total':total,'page':page,'status':'success'})
+
+@app.route('/api/dashboard/feed',methods=['GET'])
+def dashboard_feed():
+    page=max(1,int(request.args.get('page',1)));ps=min(100,int(request.args.get('page_size',30)))
+    offset=(page-1)*ps;conn=db()
+    total=conn.execute('SELECT COUNT(*) FROM posts').fetchone()[0]
+    rows=conn.execute(
+        'SELECT p.*, pr.username AS author_username, pr.display_name AS author_display_name, '
+        'pr.followers_count AS author_followers, pr.is_blue_verified AS author_blue, '
+        'pr.location AS author_location, pr.bio AS author_bio '
+        'FROM posts p JOIN profiles pr ON p.profile_id=pr.id '
+        'ORDER BY datetime(COALESCE(p.posted_at,p.fetched_at)) DESC LIMIT ? OFFSET ?',
+        (ps,offset)
+    ).fetchall()
+    conn.close();return jsonify({'items':[dict(r) for r in rows],'total':total,'page':page,'status':'success'})
 
 # ── Tasks ────────────────────────────────────────────────
 @app.route('/api/tasks',methods=['GET'])
@@ -397,7 +476,7 @@ def get_tasks():
     if s:cl.append('rt.status=?');pl.append(s)
     if ai:cl.append('rt.account_id=?');pl.append(ai)
     w=('WHERE '+' AND '.join(cl)) if cl else ''
-    rows=conn.execute(f'SELECT rt.*,COALESCE(rt.edited_reply,rt.generated_reply) as final_reply,p.text AS post_text,p.url AS post_url,pr.username AS profile_username,pr.tier AS profile_tier,a.username AS account_username FROM reply_tasks rt LEFT JOIN posts p ON rt.post_id=p.id LEFT JOIN profiles pr ON rt.profile_id=pr.id LEFT JOIN accounts a ON rt.account_id=a.id {w} ORDER BY rt.created_at DESC LIMIT 200',pl).fetchall()
+    rows=conn.execute(f'SELECT rt.*,COALESCE(rt.edited_reply,rt.generated_reply) as final_reply,p.text AS post_text,p.url AS post_url,pr.username AS profile_username,a.username AS account_username FROM reply_tasks rt LEFT JOIN posts p ON rt.post_id=p.id LEFT JOIN profiles pr ON rt.profile_id=pr.id LEFT JOIN accounts a ON rt.account_id=a.id {w} ORDER BY rt.created_at DESC LIMIT 200',pl).fetchall()
     conn.close();return jsonify({'tasks':[dict(r) for r in rows],'count':len(rows),'status':'success'})
 
 @app.route('/api/tasks/<tid>/approve',methods=['POST'])
@@ -445,6 +524,10 @@ def run_generate():return jsonify(run_expert('tw_generate',request.json or{}))
 def run_post():return jsonify(run_expert('tw_post',request.json or{}))
 @app.route('/api/run/monitor',methods=['POST'])
 def run_monitor():return jsonify(run_expert('tw_monitor',{'action':'check'}))
+@app.route('/api/run/search_getx',methods=['POST'])
+def run_search_getx():return jsonify(run_expert('tw_search_getx',request.json or{}))
+@app.route('/api/run/queue',methods=['POST'])
+def run_queue():return jsonify(run_expert('tw_queue',request.json or{}))
 
 # ── Analytics ────────────────────────────────────────────
 @app.route('/api/analytics',methods=['GET'])
@@ -465,7 +548,10 @@ def update_settings():
     body=request.json or{};conn=db()
     for k,v in body.items():
         conn.execute('INSERT INTO settings(key,value,updated_at) VALUES(?,?,datetime("now")) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at',(k,str(v)))
-    conn.commit();conn.close();return jsonify({'status':'success','updated':list(body.keys())})
+    conn.commit();conn.close()
+    if 'getx_api_token' in body:
+        kv_set_auth('getx_api_token',str(body.get('getx_api_token') or '').strip(),'GetXAPI bearer token')
+    return jsonify({'status':'success','updated':list(body.keys())})
 
 # ── Workflow state (FIX: always return status field) ─────
 @app.route('/api/workflow/state',methods=['GET'])

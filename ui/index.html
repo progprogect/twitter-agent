@@ -184,8 +184,7 @@ tr:last-child td{border-bottom:none;}
     </div>
     <nav class="sb-nav">
       <button class="nav-item" :class="tab==='dashboard'&&'active'" @click="go('dashboard')"><span class="nav-icon">🏠</span><span class="nav-label">Dashboard</span></button>
-      <button class="nav-item" :class="tab==='profiles'&&'active'" @click="go('profiles')"><span class="nav-icon">👥</span><span class="nav-label">Profiles</span><span x-show="profiles.length>0" class="nav-badge" x-text="profiles.length" style="background:var(--sbt);color:var(--sb)"></span></button>
-      <button class="nav-item" :class="tab==='posts'&&'active'" @click="go('posts')"><span class="nav-icon">📝</span><span class="nav-label">Posts</span></button>
+      <button class="nav-item" :class="tab==='outreach'&&'active'" @click="go('outreach')"><span class="nav-icon">🔎</span><span class="nav-label">Outreach</span><span x-show="profileTotal>0" class="nav-badge" x-text="profileTotal" style="background:var(--sbt);color:var(--sb)"></span></button>
       <button class="nav-item" :class="tab==='queue'&&'active'" @click="go('queue')"><span class="nav-icon">✅</span><span class="nav-label">Reply Queue</span><span x-show="pendingCount>0" class="nav-badge" x-text="pendingCount"></span></button>
       <div class="sb-sep"></div>
       <button class="nav-item" :class="tab==='analytics'&&'active'" @click="go('analytics')"><span class="nav-icon">📊</span><span class="nav-label">Analytics</span></button>
@@ -195,7 +194,7 @@ tr:last-child td{border-bottom:none;}
     </nav>
     <div class="sb-footer">
       <div class="sb-stat"><span>Accounts</span><strong x-text="accounts.length"></strong></div>
-      <div class="sb-stat"><span>Profiles</span><strong x-text="profiles.length"></strong></div>
+      <div class="sb-stat"><span>Profiles</span><strong x-text="profileTotal"></strong></div>
       <div class="sb-stat"><span>Pending</span><strong x-text="pendingCount"></strong></div>
       <div class="sb-online">Server online</div>
     </div>
@@ -228,7 +227,7 @@ tr:last-child td{border-bottom:none;}
         </div>
         <div class="sh">Quick Actions</div>
         <div class="qa-grid">
-          <div class="qa" @click="showDisc=true"><div class="qa-icon">🔍</div><div class="qa-label">Discover Profiles</div><div class="qa-desc">Describe your target audience</div></div>
+          <div class="qa" @click="go('outreach')"><div class="qa-icon">🔍</div><div class="qa-label">Outreach Search</div><div class="qa-desc">GetX API — keywords &amp; posts</div></div>
           <div class="qa" @click="go('queue')"><div class="qa-icon">✅</div><div class="qa-label">Review Replies</div><div class="qa-desc" x-text="pendingCount+' tasks pending'"></div></div>
           <div class="qa" @click="runMonitor()"><div class="qa-icon">📡</div><div class="qa-label">Check Responses</div><div class="qa-desc">Scan for new replies</div></div>
         </div>
@@ -248,75 +247,136 @@ tr:last-child td{border-bottom:none;}
         </div>
       </div>
 
-      <!-- PROFILES -->
-      <div x-show="tab==='profiles'" class="fade">
-        <div class="tbl-wrap">
-          <div class="tbl-bar">
-            <label for="sel-tier" style="display:none">Tier</label>
-            <select id="sel-tier" name="tier_filter" class="sel" x-model="pTier" @change="loadProfiles()"><option value="">All Tiers</option><option value="1">🔥 T1</option><option value="2">💙 T2</option><option value="3">⬜ T3</option></select>
-            <label for="sel-sort" style="display:none">Sort</label>
-            <select id="sel-sort" name="profile_sort" class="sel" x-model="pSort" @change="loadProfiles()"><option value="tier_score">By Score</option><option value="followers_count">By Followers</option><option value="engagement_rate">By Engagement</option></select>
-            <span class="tbl-count" x-text="profiles.length+' profiles'"></span>
-            <button class="btn btn-primary btn-sm" @click="showDisc=true">✨ Discover</button>
+      <!-- OUTREACH (GetX search + 3 tabs) -->
+      <div x-show="tab==='outreach'" class="fade">
+        <div class="card" style="margin-bottom:16px">
+          <div class="card-head"><span class="card-title">Search (GetX API)</span></div>
+          <div class="card-body">
+            <div x-show="gx.loading" class="loading-bar"><span class="spin"></span><span x-text="gx.status||'Searching...'"></span></div>
+            <div class="fg-row">
+              <div class="fg">
+                <label class="label" for="gx-keywords">Keywords</label>
+                <input id="gx-keywords" name="gx_keywords" class="inp" x-model="gx.keywords" placeholder="e.g. AI lang:en min_faves:5" :disabled="gx.loading">
+              </div>
+              <div class="fg">
+                <label class="label" for="gx-max">Max posts</label>
+                <input id="gx-max" name="gx_max" type="number" class="inp" x-model="gx.max_posts" min="1" max="500" :disabled="gx.loading">
+              </div>
+            </div>
+            <div class="fg-row">
+              <div class="fg">
+                <label class="label" for="gx-product">Product</label>
+                <select id="gx-product" name="gx_product" class="inp" x-model="gx.product" :disabled="gx.loading" style="appearance:none">
+                  <option>Latest</option><option>Top</option>
+                </select>
+              </div>
+              <div class="fg" style="display:flex;align-items:flex-end;margin-bottom:0">
+                <button type="button" class="btn btn-primary" @click="runGetxSearch()" :disabled="gx.loading||!gx.keywords.trim()">Find via API</button>
+              </div>
+            </div>
           </div>
-          <div x-show="profiles.length===0" class="empty">
-            <div class="empty-icon">👥</div><div class="empty-h">No profiles yet</div>
-            <div class="empty-d">Describe your target audience and let AI find the right people on Twitter.</div>
-            <button class="btn btn-primary" @click="showDisc=true" style="margin-top:14px">✨ Discover Profiles</button>
-          </div>
-          <table x-show="profiles.length>0">
-            <thead><tr><th>Profile</th><th>Tier</th><th style="text-align:right">Followers</th><th style="text-align:right">Engagement</th><th style="text-align:right">Posts/day</th><th>Topics</th><th style="text-align:center">Posts</th></tr></thead>
+        </div>
+
+        <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center">
+          <button type="button" class="btn btn-sm" :class="outreachSub==='all'?'btn-primary':'btn-outline'" @click="switchOutreach('all')">All</button>
+          <button type="button" class="btn btn-sm" :class="outreachSub==='posts'?'btn-primary':'btn-outline'" @click="switchOutreach('posts')">Posts</button>
+          <button type="button" class="btn btn-sm" :class="outreachSub==='profiles'?'btn-primary':'btn-outline'" @click="switchOutreach('profiles')">Profiles</button>
+          <span style="margin-left:auto;font-size:12px;color:var(--t3)" x-text="selectedPostIds.length+' selected'"></span>
+          <button type="button" class="btn btn-success btn-sm" @click="openGenModal()" :disabled="!selectedPostIds.length">Generate replies</button>
+          <button type="button" class="btn btn-outline btn-sm" @click="go('queue')">Reply queue</button>
+        </div>
+
+        <div x-show="outreachSub==='all'" class="tbl-wrap">
+          <table x-show="outreachFeed.length>0">
+            <thead><tr><th style="width:40px"></th><th>Post</th><th>Author</th><th style="text-align:right">Likes</th></tr></thead>
             <tbody>
-              <template x-for="p in profiles" :key="p.id">
+              <template x-for="row in outreachFeed" :key="row.id">
                 <tr class="tbl-row">
-                  <td @click="selP=p;go('posts')">
-                    <div class="p-name">@<span x-text="p.username"></span></div>
-                    <div class="p-bio" x-text="p.bio||'—'"></div>
+                  <td><input type="checkbox" :checked="isPostSel(row.id)" @change="togglePostSel(row.id)" :aria-label="'Select '+row.id"></td>
+                  <td>
+                    <div style="max-width:400px;white-space:pre-wrap;font-size:13px;line-height:1.5" x-text="row.text||'—'"></div>
+                    <a :href="row.url" target="_blank" rel="noopener" class="pc-link" style="font-size:11px">Open ↗</a>
                   </td>
-                  <td @click="selP=p;go('posts')"><span :class="'badge '+(p.tier===1?'bt1':p.tier===2?'bt2':'bt3')" x-text="p.tier===1?'🔥 T1':p.tier===2?'💙 T2':'⬜ T3'"></span></td>
-                  <td @click="selP=p;go('posts')" style="text-align:right;font-weight:500" x-text="(p.followers_count||0).toLocaleString()"></td>
-                  <td @click="selP=p;go('posts')" style="text-align:right" x-text="(+(p.engagement_rate||0)).toFixed(2)+'%'"></td>
-                  <td @click="selP=p;go('posts')" style="text-align:right" x-text="(+(p.posting_frequency||0)).toFixed(1)"></td>
-                  <td @click="selP=p;go('posts')">
-                    <template x-for="tag in JSON.parse(p.topic_tags||'[]').slice(0,3)" :key="tag"><span class="tag" x-text="tag"></span></template>
-                    <span x-show="!JSON.parse(p.topic_tags||'[]').length" style="font-size:11.5px;color:var(--t3)">—</span>
+                  <td>
+                    <div class="p-name">@<span x-text="row.author_username||'?'"></span></div>
+                    <div class="p-bio"><span x-text="(row.author_followers||0).toLocaleString()+' followers'"></span>
+                      <span x-show="row.author_blue" class="badge bt2" style="margin-left:6px">Blue</span></div>
+                    <div class="p-bio" x-text="row.author_location||''"></div>
                   </td>
-                  <td style="text-align:center">
-                    <button class="btn btn-outline btn-sm" @click.stop="fetchPostsForProfile(p.id,p.username)"
-                      style="white-space:nowrap" title="Collect posts from this profile">📥</button>
-                  </td>
+                  <td style="text-align:right;font-weight:500" x-text="row.likes||0"></td>
                 </tr>
               </template>
             </tbody>
           </table>
-        </div>
-      </div>
-
-      <!-- POSTS -->
-      <div x-show="tab==='posts'" class="fade">
-        <div x-show="!selP" class="empty">
-          <div class="empty-icon">📝</div><div class="empty-h">No profile selected</div>
-          <div class="empty-d">Click any profile row in Profiles tab to see their posts.</div>
-          <button class="btn btn-outline" @click="go('profiles')" style="margin-top:14px">← Profiles</button>
-        </div>
-        <template x-if="selP">
-          <div>
-            <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
-              <div style="font-size:13.5px;color:var(--t2)">Posts from <strong>@<span x-text="selP.username"></span></strong> <span style="color:var(--t3);font-size:12px" x-text="'('+posts.length+')'"></span></div>
-              <button class="btn btn-outline btn-sm" @click="go('profiles')" style="margin-left:auto">← Back</button>
-              <button class="btn btn-success btn-sm" @click="fetchPostsForProfile(selP.id,selP.username)">📥 Fetch Posts</button>
-              <button class="btn btn-primary btn-sm" @click="genReplies()">✨ Generate Replies</button>
-            </div>
-            <div x-show="posts.length===0" class="empty"><div class="empty-icon">🔍</div><div class="empty-h">No posts yet</div><div class="empty-d">Click "Fetch Posts" to collect recent tweets from this profile.</div></div>
-            <template x-for="p in posts" :key="p.id">
-              <div class="pc">
-                <div class="pc-head"><span class="pc-time" x-text="(p.posted_at||'').slice(0,16).replace('T',' ')"></span><div class="pc-stats"><span>❤️<span x-text="p.likes||0"></span></span><span>💬<span x-text="p.replies_count||0"></span></span></div></div>
-                <div class="pc-text" x-text="p.text||''"></div>
-                <div class="pc-foot"><a :href="p.url" target="_blank" class="pc-link">Open ↗</a></div>
-              </div>
-            </template>
+          <div x-show="!outreachFeed.length" class="empty" style="padding:32px 16px">
+            <div class="empty-icon">📭</div><div class="empty-h">No posts in database</div>
+            <div class="empty-d">Save a GetX API key in Settings, then run a search above.</div>
           </div>
-        </template>
+          <div class="tbl-bar" x-show="outreachFeedTotal>outreachFeedPageSize">
+            <button type="button" class="btn btn-outline btn-sm" @click="pageFeed(-1)">← Prev</button>
+            <button type="button" class="btn btn-outline btn-sm" @click="pageFeed(1)">Next →</button>
+            <span class="tbl-count" x-text="'Page '+outreachFeedPage+' / '+feedMaxPage()"></span>
+          </div>
+        </div>
+
+        <div x-show="outreachSub==='posts'" class="tbl-wrap">
+          <div class="tbl-bar" style="flex-wrap:wrap">
+            <input type="date" class="inp" style="width:auto;min-width:130px" x-model="opostFilters.date_from" @change="opage=1;loadOutreachPosts()">
+            <span style="font-size:12px;color:var(--t3)">→</span>
+            <input type="date" class="inp" style="width:auto;min-width:130px" x-model="opostFilters.date_to" @change="opage=1;loadOutreachPosts()">
+            <input type="number" class="inp" style="width:88px" placeholder="Min likes" x-model="opostFilters.min_likes" @change="opage=1;loadOutreachPosts()">
+            <input type="number" class="inp" style="width:88px" placeholder="Max" x-model="opostFilters.max_likes" @change="opage=1;loadOutreachPosts()">
+            <input type="text" class="inp" style="width:72px" placeholder="lang" x-model="opostFilters.lang" @change="opage=1;loadOutreachPosts()">
+            <button type="button" class="btn btn-outline btn-sm" @click="opage=1;loadOutreachPosts()">Apply</button>
+            <span class="tbl-count" x-text="opostsTotal+' posts'"></span>
+          </div>
+          <table x-show="oposts.length>0">
+            <thead><tr><th style="width:40px"></th><th>Text</th><th style="text-align:right">Likes</th><th>Lang</th><th>Posted</th></tr></thead>
+            <tbody>
+              <template x-for="p in oposts" :key="p.id">
+                <tr class="tbl-row">
+                  <td><input type="checkbox" :checked="isPostSel(p.id)" @change="togglePostSel(p.id)"></td>
+                  <td><div style="max-width:420px;white-space:pre-wrap;font-size:13px" x-text="p.text||'—'"></div><a :href="p.url" target="_blank" rel="noopener" class="pc-link" style="font-size:11px">Open</a></td>
+                  <td style="text-align:right" x-text="p.likes||0"></td>
+                  <td x-text="p.lang||'—'"></td>
+                  <td style="font-size:12px;color:var(--t3)" x-text="(p.posted_at||'').slice(0,16)"></td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+          <div x-show="!oposts.length" class="empty" style="padding:28px"><div class="empty-h">No posts match filters</div></div>
+        </div>
+
+        <div x-show="outreachSub==='profiles'" class="tbl-wrap">
+          <div class="tbl-bar" style="flex-wrap:wrap">
+            <input type="number" class="inp" style="width:100px" placeholder="Min flw" x-model="profFilters.min_followers" @change="prpage=1;loadOutreachProfiles()">
+            <input type="number" class="inp" style="width:100px" placeholder="Max flw" x-model="profFilters.max_followers" @change="prpage=1;loadOutreachProfiles()">
+            <input type="text" class="inp" style="min-width:120px" placeholder="Location" x-model="profFilters.location" @change="prpage=1;loadOutreachProfiles()">
+            <select class="sel" x-model="profFilters.blue" @change="prpage=1;loadOutreachProfiles()">
+              <option value="">Any Blue</option><option value="1">Blue verified</option><option value="0">Not Blue</option>
+            </select>
+            <select class="sel" x-model="pfSort" @change="prpage=1;loadOutreachProfiles()">
+              <option value="discovered_at">Sort: Newest</option>
+              <option value="followers_count">Sort: Followers</option>
+              <option value="username">Sort: Username</option>
+            </select>
+            <span class="tbl-count" x-text="oprTotal+' profiles'"></span>
+          </div>
+          <table x-show="oprProfiles.length>0">
+            <thead><tr><th>Profile</th><th style="text-align:right">Followers</th><th>Location</th><th>Blue</th></tr></thead>
+            <tbody>
+              <template x-for="p in oprProfiles" :key="p.id">
+                <tr class="tbl-row">
+                  <td><div class="p-name">@<span x-text="p.username"></span></div><div class="p-bio" x-text="(p.bio||'').slice(0,120)"></div></td>
+                  <td style="text-align:right;font-weight:500" x-text="(p.followers_count||0).toLocaleString()"></td>
+                  <td x-text="p.location||'—'"></td>
+                  <td><span class="badge bt2" x-show="p.is_blue_verified">Blue</span><span x-show="!p.is_blue_verified" style="color:var(--t3)">—</span></td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+          <div x-show="!oprProfiles.length" class="empty" style="padding:28px"><div class="empty-h">No profiles</div></div>
+        </div>
       </div>
 
       <!-- QUEUE -->
@@ -332,7 +392,7 @@ tr:last-child td{border-bottom:none;}
         <template x-for="t in tasks" :key="t.id">
           <div class="qc">
             <div class="qc-head">
-              <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0"><span class="qc-pname">@<span x-text="t.profile_username||'?'"></span></span><span :class="'badge '+(t.profile_tier===1?'bt1':t.profile_tier===2?'bt2':'bt3')" x-text="'T'+(t.profile_tier||3)"></span><span x-show="t.account_username" class="qc-via">via @<span x-text="t.account_username||''"></span></span></div>
+              <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0"><span class="qc-pname">@<span x-text="t.profile_username||'?'"></span></span><span x-show="t.account_username" class="qc-via">via @<span x-text="t.account_username||''"></span></span></div>
               <span :class="'badge '+(t.status==='pending'?'bp':t.status==='approved'?'ba':t.status==='rejected'?'br':t.status==='posted'?'bpo':'bf')" x-text="t.status"></span>
             </div>
             <div class="qc-body">
@@ -449,6 +509,19 @@ tr:last-child td{border-bottom:none;}
           </div>
         </div>
         <div class="ss">
+          <div class="ss-head">🔑 GetX API</div>
+          <div class="ss-body">
+            <div class="alert alert-info" style="font-size:12px">Outreach search uses <a href="https://docs.getxapi.com/docs" target="_blank" rel="noopener">GetXAPI</a> (Bearer token). This is not your Twitter password.</div>
+            <div class="fg">
+              <label class="label" for="inp-getx-key">API key</label>
+              <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <input id="inp-getx-key" type="password" name="getx_api_key" class="inp" x-model="getxKeyInput" :placeholder="(cfg.getx_api_token&&String(cfg.getx_api_token).length)?'•••••••• saved':'Bearer token'">
+                <button type="button" class="btn btn-outline" @click="saveGetxKey()">Save key</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="ss">
           <div class="ss-head">🤖 AI Provider</div>
           <div class="ss-body">
             <div class="alert alert-info" style="font-size:12px">Configure an AI provider to use natural language query expansion in Discover.</div>
@@ -514,99 +587,20 @@ tr:last-child td{border-bottom:none;}
   <div class="toast"><span x-text="toast.ico||'ℹ️'"></span><span x-text="toast.msg"></span></div>
 </div>
 
-<!-- ═══════════════════════════════════════════════════════
-     NEW DISCOVERY MODAL v2 — Natural Language + AI Expansion
-     ══════════════════════════════════════════════════════ -->
-<div class="overlay" x-show="showDisc" @click.self="showDisc=false">
+<div class="overlay" x-show="genModal.open" @click.self="genModal.open=false" x-cloak>
   <div class="modal" style="max-width:520px">
     <div class="modal-head">
-      <span class="modal-title">✨ Discover Profiles</span>
-      <button class="modal-close" @click="showDisc=false" x-show="!disc.loading">✕</button>
+      <span class="modal-title">Generate replies</span>
+      <button type="button" class="modal-close" @click="genModal.open=false">✕</button>
     </div>
     <div class="modal-body">
-
-      <!-- Loading state -->
-      <div x-show="disc.loading" class="loading-bar">
-        <span class="spin"></span>
-        <span x-text="disc.loading_status||'Processing...'"></span>
-      </div>
-
-      <!-- AI result preview (shown after expansion) -->
-      <div x-show="disc.ai_result && !disc.loading"
-           style="background:var(--blb);border:1px solid #BFDBFE;border-radius:var(--rs);padding:10px 13px;margin-bottom:12px">
-        <div style="font-size:11px;font-weight:700;color:var(--bl);margin-bottom:5px;text-transform:uppercase;letter-spacing:.5px">
-          🤖 AI Search Terms
-          <span x-show="disc.ai_result?.source" style="font-weight:400;text-transform:none;margin-left:6px;color:#60A5FA" x-text="'via '+disc.ai_result?.source"></span>
-        </div>
-        <div>
-          <template x-for="kw in (disc.ai_result?.search_queries||[])" :key="kw">
-            <span class="chip" x-text="kw"></span>
-          </template>
-        </div>
-        <div x-show="(disc.ai_result?.topic_keywords||[]).length>0" style="margin-top:5px">
-          <template x-for="t in (disc.ai_result?.topic_keywords||[]).slice(0,8)" :key="t">
-            <span class="chip chip-topic" x-text="t"></span>
-          </template>
-        </div>
-      </div>
-
-      <!-- Step 1: Profile description -->
-      <div class="fg">
-        <label class="label" for="disc-profile-desc">
-          👥 Who are you looking for?
-          <span style="font-weight:400;color:var(--t3);font-size:11px"> — describe in plain language</span>
-        </label>
-        <textarea id="disc-profile-desc" name="disc_profile_desc" class="inp"
-          x-model="disc.profile_description" rows="3"
-          :disabled="disc.loading"
-          placeholder="E.g. Venture capitalists and angel investors focused on fintech and B2B SaaS, active on Twitter with 5k+ followers..."></textarea>
-      </div>
-
-      <!-- Step 2: Content description -->
-      <div class="fg">
-        <label class="label" for="disc-content-desc">
-          📄 What posts interest you?
-          <span style="font-weight:400;color:var(--t3);font-size:11px"> — optional, for post filtering</span>
-        </label>
-        <textarea id="disc-content-desc" name="disc_content_desc" class="inp"
-          x-model="disc.content_description" rows="2"
-          :disabled="disc.loading"
-          placeholder="E.g. Posts about investment rounds, portfolio companies, market trends in AI/fintech, startup funding..."></textarea>
-      </div>
-
-      <!-- Options row -->
-      <div class="fg-row" style="margin-bottom:10px">
-        <div class="fg" style="margin-bottom:0">
-          <label class="label" for="disc-limit">Max profiles</label>
-          <input id="disc-limit" name="disc_limit" type="number" class="inp" x-model="disc.limit" min="1" max="20" :disabled="disc.loading">
-        </div>
-        <div class="fg" style="margin-bottom:0">
-          <label class="label" for="disc-min-fl">Min followers</label>
-          <input id="disc-min-fl" name="disc_min_fl" type="number" class="inp" x-model="disc.min_followers" min="0" :disabled="disc.loading">
-        </div>
-      </div>
-
-      <div style="display:flex;gap:16px;flex-wrap:wrap">
-        <label class="tgl" for="disc-dry">
-          <input id="disc-dry" name="disc_dry_run" type="checkbox" x-model="disc.dry_run" :disabled="disc.loading">
-          <span class="tgl-text">Dry run (preview only)</span>
-        </label>
-        <label class="tgl" for="disc-auto-posts" x-show="disc.content_description">
-          <input id="disc-auto-posts" name="disc_auto_posts" type="checkbox" x-model="disc.auto_fetch_posts" :disabled="disc.loading">
-          <span class="tgl-text">Auto-collect posts</span>
-        </label>
-      </div>
+      <label class="label" for="gen-intent">Prompt / reply intent</label>
+      <textarea id="gen-intent" name="gen_intent" class="inp" rows="4" x-model="genModal.intent" placeholder="Tone and goal for replies..."></textarea>
+      <p style="font-size:11.5px;color:var(--t3);margin-top:8px" x-text="selectedPostIds.length+' posts selected · tasks appear in Reply queue'"></p>
     </div>
-
     <div class="modal-foot">
-      <button class="btn btn-outline" @click="showDisc=false" :disabled="disc.loading">Cancel</button>
-      <button class="btn btn-primary" @click="runSmartDiscover()"
-        :disabled="!disc.profile_description.trim() || disc.loading">
-        <span x-show="!disc.loading">✨ Find Profiles</span>
-        <span x-show="disc.loading" style="display:flex;align-items:center;gap:6px">
-          <span class="spin"></span> Finding...
-        </span>
-      </button>
+      <button type="button" class="btn btn-outline" @click="genModal.open=false">Cancel</button>
+      <button type="button" class="btn btn-primary" @click="confirmGen()">Generate</button>
     </div>
   </div>
 </div>
@@ -614,29 +608,28 @@ tr:last-child td{border-bottom:none;}
 <script>
 function app(){return{
   tab:'dashboard',
-  tabs:[{id:'dashboard',label:'Dashboard'},{id:'profiles',label:'Profiles'},{id:'posts',label:'Posts'},{id:'queue',label:'Reply Queue'},{id:'analytics',label:'Analytics'},{id:'settings',label:'Settings'},{id:'debug',label:'Debug Logs'}],
-  accounts:[],profiles:[],posts:[],tasks:[],analytics:[],cfg:{},stats:{},phase:'idle',
-  acct:'',pTier:'',pSort:'tier_score',tF:'pending',selP:null,pendingCount:0,
+  tabs:[{id:'dashboard',label:'Dashboard'},{id:'outreach',label:'Outreach'},{id:'queue',label:'Reply Queue'},{id:'analytics',label:'Analytics'},{id:'settings',label:'Settings'},{id:'debug',label:'Debug Logs'}],
+  accounts:[],profiles:[],tasks:[],analytics:[],cfg:{},stats:{},phase:'idle',
+  profileTotal:0,
+  acct:'',tF:'pending',pendingCount:0,
   showAdd:false,relinkTarget:null,
   na:{username:'',auth_token:'',ct0:'',mode:'direct'},
   authFlow:{status:'idle'},_authPoll:null,
-  aiKeyInput:'',
+  aiKeyInput:'',getxKeyInput:'',
 
-  // ── New Discovery state ──────────────────────────────────
-  showDisc:false,
-  disc:{
-    profile_description:'',
-    content_description:'',
-    limit:10,
-    min_followers:0,
-    dry_run:false,
-    auto_fetch_posts:true,
-    loading:false,
-    loading_status:'',
-    ai_result:null
-  },
+  gx:{keywords:'',max_posts:50,product:'Latest',loading:false,status:''},
+  outreachSub:'all',
+  outreachFeed:[],outreachFeedPage:1,outreachFeedPageSize:30,outreachFeedTotal:0,
+  selectedPostIds:[],
+  genModal:{open:false,intent:'helpful and curious, add genuine value'},
 
-  // Logs
+  oposts:[],opostsTotal:0,opage:1,
+  opostFilters:{date_from:'',date_to:'',min_likes:'',max_likes:'',lang:''},
+
+  oprProfiles:[],oprTotal:0,prpage:1,
+  profFilters:{min_followers:'',max_followers:'',location:'',blue:''},
+  pfSort:'discovered_at',
+
   debugLogs:[],logFilter:'all',logAutoScroll:true,logLastUpdate:'—',_pollTimer:null,
 
   toast:{on:false,msg:'',ico:'ℹ️'},_toastTimer:null,
@@ -649,7 +642,116 @@ function app(){return{
     },12000);
   },
 
-  go(id){this.tab=id;if(id==='posts'&&this.selP)this.loadPosts();if(id==='debug')this.loadLogs();},
+  go(id){
+    this.tab=id;
+    if(id==='outreach')this.switchOutreach(this.outreachSub);
+    if(id==='debug')this.loadLogs();
+  },
+
+  switchOutreach(sub){
+    this.outreachSub=sub;
+    if(sub==='all')this.loadOutreachAll();
+    else if(sub==='posts')this.loadOutreachPosts();
+    else if(sub==='profiles')this.loadOutreachProfiles();
+  },
+
+  feedMaxPage(){
+    return Math.max(1,Math.ceil((this.outreachFeedTotal||0)/this.outreachFeedPageSize));
+  },
+
+  pageFeed(d){
+    const n=this.outreachFeedPage+d;
+    if(n<1||n>this.feedMaxPage())return;
+    this.outreachFeedPage=n;
+    this.loadOutreachAll();
+  },
+
+  togglePostSel(id){
+    const i=this.selectedPostIds.indexOf(id);
+    if(i>=0)this.selectedPostIds.splice(i,1);
+    else this.selectedPostIds.push(id);
+  },
+  isPostSel(id){return this.selectedPostIds.includes(id);},
+
+  openGenModal(){
+    if(!this.selectedPostIds.length){this.showToast('Select posts first','⚠️');return;}
+    this.genModal.open=true;
+  },
+
+  async confirmGen(){
+    this.showToast('Generating replies (AI)...','✨');
+    const r=await this.api('/api/run/queue','POST',{
+      action:'create_batch',
+      post_ids:this.selectedPostIds.join(','),
+      reply_intent:this.genModal.intent||'helpful and curious',
+      account_id:this.acct||''
+    });
+    this.genModal.open=false;
+    if(r.status==='success'){
+      this.showToast(`Tasks created: ${r.tasks_created||0} (failed: ${r.tasks_failed||0})`,'✅');
+      this.selectedPostIds=[];
+      this.go('queue');
+      await this.loadTasks();
+    }else{
+      this.showToast(r.message||r.error||'Batch failed','❌');
+    }
+  },
+
+  async runGetxSearch(){
+    if(!this.gx.keywords.trim()){this.showToast('Enter keywords','⚠️');return;}
+    this.gx.loading=true;
+    this.gx.status='GetX advanced_search...';
+    const r=await this.api('/api/run/search_getx','POST',{
+      keywords:this.gx.keywords.trim(),
+      max_posts:parseInt(this.gx.max_posts,10)||50,
+      product:this.gx.product||'Latest'
+    });
+    this.gx.loading=false;
+    this.gx.status='';
+    if(r.status==='success'){
+      this.showToast(`Posts: ${r.posts_saved||0} · Profiles: ${r.profiles_upserted||0} · API calls: ${r.api_calls||0}`,'✅');
+      await this.loadProfiles();
+      if(this.tab==='outreach')await this.loadOutreachAll();
+    }else{
+      this.showToast(r.message||r.error||'Search failed','❌');
+    }
+  },
+
+  async loadOutreachAll(){
+    const r=await this.api('/api/dashboard/feed?page='+this.outreachFeedPage+'&page_size='+this.outreachFeedPageSize);
+    if(r.items){this.outreachFeed=r.items;this.outreachFeedTotal=r.total||0;}
+  },
+
+  async loadOutreachPosts(){
+    let q='/api/posts?page='+this.opage+'&page_size=80&order=DESC';
+    const f=this.opostFilters;
+    if(f.date_from)q+='&date_from='+encodeURIComponent(f.date_from);
+    if(f.date_to)q+='&date_to='+encodeURIComponent(f.date_to);
+    if(String(f.min_likes)!=='')q+='&min_likes='+encodeURIComponent(f.min_likes);
+    if(String(f.max_likes)!=='')q+='&max_likes='+encodeURIComponent(f.max_likes);
+    if(f.lang)q+='&lang='+encodeURIComponent(f.lang);
+    const r=await this.api(q);
+    if(r.posts){this.oposts=r.posts;this.opostsTotal=r.total||r.posts.length;}
+  },
+
+  async loadOutreachProfiles(){
+    let q='/api/profiles?page='+this.prpage+'&page_size=80&sort='+encodeURIComponent(this.pfSort)+'&order=DESC';
+    const f=this.profFilters;
+    if(String(f.min_followers)!=='')q+='&min_followers='+encodeURIComponent(f.min_followers);
+    if(String(f.max_followers)!=='')q+='&max_followers='+encodeURIComponent(f.max_followers);
+    if(f.location)q+='&location='+encodeURIComponent(f.location);
+    if(f.blue!=='')q+='&blue='+encodeURIComponent(f.blue);
+    const r=await this.api(q);
+    if(r.profiles){this.oprProfiles=r.profiles;this.oprTotal=r.total||r.profiles.length;}
+  },
+
+  async saveGetxKey(){
+    if(!this.getxKeyInput.trim()){this.showToast('Paste API key first','⚠️');return;}
+    await this.api('/api/settings','PATCH',{getx_api_token:this.getxKeyInput.trim()});
+    this.cfg.getx_api_token=this.getxKeyInput.trim();
+    this.getxKeyInput='';
+    this.showToast('GetX key saved','🔑');
+  },
 
   openAddForm(){this.relinkTarget=null;this.na={username:'',auth_token:'',ct0:'',mode:'direct'};this.authFlow={status:'idle'};this.showAdd=true;},
   closeAddForm(){clearInterval(this._authPoll);this._authPoll=null;try{fetch('/api/auth/twitter/cancel',{method:'POST'});}catch(e){}this.showAdd=false;this.relinkTarget=null;this.na={username:'',auth_token:'',ct0:'',mode:'direct'};this.authFlow={status:'idle'};},
@@ -660,10 +762,13 @@ function app(){return{
     catch(e){return{error:e.message};}
   },
 
-  async load(){await Promise.all([this.loadAccounts(),this.loadProfiles(),this.loadTasks(),this.loadAnalytics(),this.loadSettings(),this.loadPhase()]);if(this.selP)this.loadPosts();},
+  async load(){await Promise.all([this.loadAccounts(),this.loadProfiles(),this.loadTasks(),this.loadAnalytics(),this.loadSettings(),this.loadPhase()]);if(this.tab==='outreach')this.switchOutreach(this.outreachSub);},
   async loadAccounts(){const r=await this.api('/api/accounts');if(r.accounts)this.accounts=r.accounts;},
-  async loadProfiles(){const r=await this.api('/api/profiles?tier='+this.pTier+'&sort='+this.pSort);if(r.profiles)this.profiles=r.profiles;},
-  async loadPosts(){if(!this.selP)return;const r=await this.api('/api/posts?profile_id='+this.selP.id);if(r.posts)this.posts=r.posts;},
+  async loadProfiles(){
+    const r=await this.api('/api/profiles?page_size=200&sort=discovered_at&order=DESC');
+    if(r.profiles)this.profiles=r.profiles;
+    if(r.total!==undefined)this.profileTotal=r.total;
+  },
   async loadTasks(){
     const r=await this.api('/api/tasks?status='+this.tF+'&account_id='+this.acct);
     if(r.tasks)this.tasks=r.tasks.map(t=>({...t,_ed:false,_txt:t.final_reply||t.generated_reply||''}));
@@ -680,54 +785,13 @@ function app(){return{
   async clearLogs(){await this.api('/api/logs/clear','POST');this.debugLogs=[];this.showToast('Logs cleared','🗑');},
   get filteredLogs(){if(this.logFilter==='all')return this.debugLogs;return this.debugLogs.filter(l=>l.level===this.logFilter);},
 
-  // ── NEW: Smart Discover (NL description + AI expansion) ───
-  async runSmartDiscover(){
-    if(!this.disc.profile_description.trim()){this.showToast('Please describe who you\'re looking for','⚠️');return;}
-    this.disc.loading=true;this.disc.loading_status='🤖 Expanding query with AI...';this.disc.ai_result=null;
-    try{
-      const r=await this.api('/api/run/smart_discover','POST',{
-        profile_description:this.disc.profile_description,
-        content_description:this.disc.content_description,
-        limit:parseInt(this.disc.limit)||10,
-        min_followers:parseInt(this.disc.min_followers)||0,
-        dry_run:this.disc.dry_run,
-        auto_fetch_posts:this.disc.auto_fetch_posts&&!!this.disc.content_description
-      });
-      if(r.status==='success'){
-        this.disc.ai_result={search_queries:r.ai_keywords||[],topic_keywords:r.ai_topics||[],source:r.ai_source||'auto'};
-        let msg=`Found ${r.profiles_found} profiles`;
-        if(r.posts_saved)msg+=` · ${r.posts_saved} posts collected`;
-        this.showToast(msg+' ✅','✅');
-        if(!this.disc.dry_run){this.showDisc=false;this.go('profiles');await this.loadProfiles();}
-        else{this.showToast('Dry run: '+msg,'🔍');}
-      }else{this.showToast('Error: '+(r.message||'Unknown'),'❌');}
-    }catch(e){this.showToast('Error: '+e.message,'❌');}
-    finally{this.disc.loading=false;this.disc.loading_status='';}
-  },
-
-  // ── NEW: Fetch posts for a specific profile ────────────────
-  async fetchPostsForProfile(profileId,username){
-    this.showToast(`Fetching posts for @${username}...`,'📥');
-    const r=await this.api('/api/run/posts_for_profile','POST',{
-      profile_id:profileId,
-      content_description:this.disc.content_description||''
-    });
-    if(r.status==='success'){
-      const n=r.posts_saved||0;
-      this.showToast(`Saved ${n} posts from @${username}`+(n===0?' (already up to date)':''),'✅');
-      this.selP={id:profileId,username};this.go('posts');await this.loadPosts();
-    }else{this.showToast('Error: '+(r.message||r.error||'Unknown'),'❌');}
-  },
-
-  // ── AI Key save ────────────────────────────────────────────
   async saveAiKey(){
     if(!this.aiKeyInput){this.showToast('Enter API key first','⚠️');return;}
     const keyMap={openai:'openai_api_key',groq:'groq_api_key',anthropic:'anthropic_api_key'};
     const keyName=keyMap[this.cfg.ai_provider];
     if(!keyName){this.showToast('Select a provider first','⚠️');return;}
-    const r=await fetch('/api/settings',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({})});
-    // Store via Extella KV through a run call
-    this.showToast(`AI key saved for ${this.cfg.ai_provider} ✅`,'🔑');
+    await this.api('/api/settings','PATCH',{[keyName]:this.aiKeyInput.trim()});
+    this.showToast(`AI key saved for ${this.cfg.ai_provider}`,'🔑');
     this.aiKeyInput='';
   },
 
@@ -790,13 +854,6 @@ function app(){return{
   async postAll(){this.showToast('Posting...','🚀');await this.api('/api/run/post','POST',{});setTimeout(()=>this.loadTasks(),5000);},
   async saveSetting(k,v){await this.api('/api/settings','PATCH',{[k]:v});this.showToast('Saved','💾');},
 
-  async genReplies(){
-    if(!this.selP){this.showToast('Select a profile first','⚠️');return;}
-    this.showToast('Generating replies...','✨');
-    await this.api('/api/run/generate','POST',{mode:'single',profile_id:this.selP.id,reply_intent:'helpful and curious'});
-    this.showToast('Replies generated — check Queue ✨','✨');
-    setTimeout(()=>{this.go('queue');this.loadTasks();},2500);
-  },
   async runMonitor(){
     this.showToast('Checking...','📡');
     const r=await this.api('/api/run/monitor','POST');

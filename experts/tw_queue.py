@@ -104,8 +104,8 @@ def tw_queue(
     # ════════════════════════════════════════════════════════════
     if action == "create_batch":
         """Generate replies for a list of post_ids and create pending tasks."""
-        if not post_ids and not account_id:
-            return {"status": "error", "message": "post_ids and account_id required for create_batch"}
+        if not post_ids:
+            return {"status": "error", "message": "post_ids required for create_batch"}
 
         ids = [p.strip() for p in post_ids.split(",") if p.strip()]
         if not ids:
@@ -188,7 +188,7 @@ def tw_queue(
             SELECT rt.*,
                    COALESCE(rt.edited_reply, rt.generated_reply) as final_reply,
                    p.text as post_text, p.url as post_url,
-                   pr.username as profile_username, pr.tier as profile_tier,
+                   pr.username as profile_username,
                    a.username as account_username
             FROM reply_tasks rt
             LEFT JOIN posts p ON rt.post_id=p.id
