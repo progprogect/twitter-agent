@@ -112,6 +112,8 @@ form.filter-panel{margin:0;display:block;}
 .qc{background:var(--sf);border:1px solid var(--bd);border-radius:var(--r);box-shadow:var(--sh);margin-bottom:10px;transition:box-shadow var(--tr);}
 .qc:hover{box-shadow:var(--shm);}
 .qc-head{padding:10px 14px;background:var(--sf2);border-bottom:1px solid var(--bd);display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+.qc-post-cb{display:flex;align-items:center;margin-right:2px;cursor:pointer;}
+.qc-post-cb input{width:16px;height:16px;cursor:pointer;accent-color:var(--bl);}
 .qc-pname{font-size:13.5px;font-weight:700;}.qc-via{font-size:11.5px;color:var(--t3);}
 .qc-body{display:grid;grid-template-columns:1fr 1fr;}
 .qc-panel{padding:14px 16px;}.qc-panel+.qc-panel{border-left:1px solid var(--bd);}
@@ -440,6 +442,7 @@ form.filter-panel{margin:0;display:block;}
           <label for="sel-task-status" style="display:none">Status</label>
           <select id="sel-task-status" name="task_status" class="sel" x-model="tF" @change="loadTasks()"><option value="pending">⏳ Pending</option><option value="approved">✅ Approved</option><option value="posted">🚀 Posted</option><option value="rejected">❌ Rejected</option></select>
           <button x-show="tF==='approved'&&tasks.length>0" class="btn btn-primary btn-sm" @click="postAll()">🚀 Post All</button>
+          <button x-show="tF==='approved'&&tasks.length>0" class="btn btn-outline btn-sm" @click="postSelectedReplies()">Post Selected</button>
           <button x-show="tF==='pending'&&tasks.length>0" class="btn btn-success btn-sm" @click="bulkApprove()">✓ Approve All</button>
           <button class="btn btn-outline btn-sm" @click="runMonitor()" title="Check for replies to posted tweets">📡 Monitor</button>
           <span style="font-size:11.5px;color:var(--t3);margin-left:auto" x-text="tasks.length+' tasks'"></span>
@@ -448,6 +451,9 @@ form.filter-panel{margin:0;display:block;}
         <template x-for="t in tasks" :key="t.id">
           <div class="qc">
             <div class="qc-head">
+              <label x-show="t.status==='approved'" class="qc-post-cb" :title="'Queue this reply for posting'">
+                <input type="checkbox" name="post_sel" :checked="postReplySel.includes(t.id)" @change="togglePostReplySel(t.id,$event.target.checked)">
+              </label>
               <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0"><span class="qc-pname">@<span x-text="t.profile_username||'?'"></span></span><span x-show="t.account_username" class="qc-via">via @<span x-text="t.account_username||''"></span></span></div>
               <span :class="'badge '+(t.status==='pending'?'bp':t.status==='approved'?'ba':t.status==='rejected'?'br':t.status==='posted'?'bpo':'bf')" x-text="t.status"></span>
             </div>
@@ -688,6 +694,7 @@ function app(){return{
   _profFilterDebounce:null,
 
   debugLogs:[],logFilter:'all',logAutoScroll:true,logLastUpdate:'—',_pollTimer:null,
+  postReplySel:[],_afterPostPoll:null,_afterPostPollN:0,
 
   toast:{on:false,msg:'',ico:'ℹ️'},_toastTimer:null,
 
@@ -953,7 +960,45 @@ function app(){return{
     if(r.status==='success'){t._ed=false;t.final_reply=t._txt;this.showToast('Saved ✅','💾');}
   },
   async bulkApprove(){const ids=this.tasks.filter(t=>t.status==='pending').map(t=>t.id);if(!ids.length)return;await this.api('/api/tasks/bulk','POST',{action:'approve',task_ids:ids});this.showToast('All '+ids.length+' approved ✅','✅');await this.loadTasks();},
-  async postAll(){this.showToast('Posting...','🚀');await this.api('/api/run/post','POST',{account_id:this.acct||''});setTimeout(()=>this.loadTasks(),5000);},
+  togglePostReplySel(id,on){
+    if(on){if(!this.postReplySel.includes(id))this.postReplySel=[...this.postReplySel,id];}
+    else{this.postReplySel=this.postReplySel.filter(x=>x!==id);}
+  },
+  startAfterPostPolling(){
+    if(this._afterPostPoll){clearInterval(this._afterPostPoll);this._afterPostPoll=null;}
+    this._afterPostPollN=0;
+    this._afterPostPoll=setInterval(async()=>{
+      this._afterPostPollN++;
+      await this.loadTasks();
+      if(this._afterPostPollN>=24){clearInterval(this._afterPostPoll);this._afterPostPoll=null;}
+    },5000);
+  },
+  async postAll(){
+    const r=await this.api('/api/run/post_replies','POST',{});
+    if(r.status==='queued'&&r.count>0){
+      this.showToast(`Posting ${r.count} ${r.count===1?'reply':'replies'} in background (20s delay between posts)`,'🚀');
+      this.startAfterPostPolling();
+    }else if(r.status==='queued'&&(!r.count||r.count===0)){
+      this.showToast(r.message||'Nothing to post','⚠️');
+    }else{
+      this.showToast((r.message||r.error||'Could not queue posting'),'❌');
+    }
+  },
+  async postSelectedReplies(){
+    const ok=new Set(this.tasks.filter(t=>t.status==='approved').map(t=>t.id));
+    const sel=this.postReplySel.filter(id=>ok.has(id));
+    if(!sel.length){this.showToast('Select approved tasks with the checkboxes','⚠️');return;}
+    const r=await this.api('/api/run/post_replies','POST',{task_ids:sel});
+    if(r.status==='queued'&&r.count>0){
+      this.showToast(`Posting ${r.count} ${r.count===1?'reply':'replies'} in background (20s delay between posts)`,'🚀');
+      this.postReplySel=this.postReplySel.filter(id=>!sel.includes(id));
+      this.startAfterPostPolling();
+    }else if(r.status==='queued'&&(!r.count||r.count===0)){
+      this.showToast(r.message||'Nothing to post','⚠️');
+    }else{
+      this.showToast((r.message||r.error||'Could not queue posting'),'❌');
+    }
+  },
   async saveSetting(k,v){await this.api('/api/settings','PATCH',{[k]:v});this.showToast('Saved','💾');},
 
   async runMonitor(){

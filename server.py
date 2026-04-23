@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import os,sys,json,re,sqlite3,time,uuid,requests,subprocess as _sp,signal as _sg
+import os,sys,json,re,sqlite3,time,uuid,requests,subprocess as _sp,signal as _sg,threading
 from pathlib import Path
 from datetime import datetime,timezone
 from collections import deque
@@ -16,6 +16,31 @@ _AUTH_STATE=str(Path(__file__).parent/'.tw_auth_state.json')
 _AUTH_SCRIPT=str(Path(__file__).parent/'tw_auth_playwright.py')
 BEARER=('AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs'
         '%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA')
+CREATE_TWEET_QUERY_ID='SoVnbfCycZ7fERGCwpZkYA'
+GRAPHQL_CREATE_TWEET_URL=f'https://x.com/i/api/graphql/{CREATE_TWEET_QUERY_ID}/CreateTweet'
+_CREATE_TWEET_FEATURES={
+    'interactive_text_enabled': True,
+    'longform_notetweets_inline_media_enabled': False,
+    'responsive_web_text_conversations_enabled': False,
+    'tweet_with_visibility_results_prefer_gql_limited_actions_policy_enabled': False,
+    'vibe_api_enabled': False,
+    'rweb_lists_timeline_redesign_enabled': True,
+    'responsive_web_graphql_exclude_directive_enabled': True,
+    'verified_phone_label_enabled': False,
+    'creator_subscriptions_tweet_preview_api_enabled': True,
+    'responsive_web_graphql_timeline_navigation_enabled': True,
+    'responsive_web_graphql_skip_user_profile_image_extensions_enabled': False,
+    'tweetypie_unmention_optimization_enabled': True,
+    'responsive_web_edit_tweet_api_enabled': True,
+    'graphql_is_translatable_rweb_tweet_is_translatable_enabled': True,
+    'view_counts_everywhere_api_enabled': True,
+    'longform_notetweets_consumption_enabled': True,
+    'tweet_awards_web_tipping_enabled': False,
+    'freedom_of_speech_not_reach_enabled': False,
+    'standardized_nudges_misinfo': True,
+    'longform_notetweets_rich_text_read_enabled': True,
+    'responsive_web_enhance_cards_enabled': False,
+}
 _LOG=deque(maxlen=500)
 
 def log(level,msg,extra=None):
@@ -765,6 +790,268 @@ def bulk_tasks():
             conn.execute(f'UPDATE reply_tasks SET status=?{ts} WHERE id=?',(target,tid));done+=1
     conn.commit();conn.close();return jsonify({'status':'success','action':act,'success':done})
 
+def build_credentials_pool():
+    """Same data as GET /api/credentials/pool (no HTTP — avoids deadlock when called from Flask)."""
+    conn=db()
+    rows=conn.execute(
+        'SELECT id,username,health_score,circuit_state '
+        'FROM accounts WHERE role_discovery=1 ORDER BY health_score DESC'
+    ).fetchall()
+    conn.close()
+    pool=[]
+    for r in rows:
+        if (r['circuit_state'] or 'closed') == 'open':
+            continue
+        session_raw=kv_get_auth(f"tw_session_{r['id']}")
+        if not session_raw:
+            continue
+        try:
+            sess=json.loads(session_raw)
+            at=sess.get('auth_token','')
+            ct=sess.get('ct0','')
+            if at and ct and len(at) > 10 and len(ct) > 10:
+                pool.append({
+                    'account_id': r['id'],
+                    'username': r['username'],
+                    'auth_token': at,
+                    'ct0': ct,
+                    'health_score': r['health_score'],
+                    'circuit_state': r['circuit_state'] or 'closed',
+                })
+        except Exception:
+            pass
+    return pool
+
+def _ensure_curl_cffi_requests():
+    try:
+        import curl_cffi.requests as cf_req
+        return cf_req
+    except ImportError:
+        log('INFO', 'curl_cffi not installed; running pip install curl_cffi …')
+        try:
+            _sp.check_call([sys.executable, '-m', 'pip', 'install', 'curl_cffi'], timeout=180)
+        except Exception as e:
+            log('ERR', f'pip install curl_cffi: {e}')
+            return None
+        try:
+            import curl_cffi.requests as cf_req
+            return cf_req
+        except ImportError:
+            return None
+
+def _tweet_id_for_reply(post_url, post_id):
+    u = (post_url or '').strip()
+    if u:
+        return u.rstrip('/').split('/')[-1]
+    return str(post_id or '').strip()
+
+def _pick_pool_creds(pool, account_id):
+    if not pool:
+        return None
+    aid = (account_id or '').strip()
+    if aid:
+        for p in pool:
+            if str(p.get('account_id') or '') == aid:
+                return p
+    return pool[0]
+
+def _create_tweet_rest_id(data):
+    if not isinstance(data, dict):
+        return None
+    try:
+        d = data.get('data') or {}
+        ct = d.get('create_tweet') or {}
+        tr = ct.get('tweet_results') or {}
+        res = tr.get('result')
+        if isinstance(res, dict):
+            rid = res.get('rest_id')
+            if rid:
+                return str(rid)
+            tw = res.get('tweet')
+            if isinstance(tw, dict) and tw.get('rest_id'):
+                return str(tw['rest_id'])
+    except Exception:
+        pass
+    return None
+
+def _graphql_errors_text(data):
+    if not isinstance(data, dict):
+        return ''
+    errs = data.get('errors')
+    if not isinstance(errs, list):
+        return ''
+    parts = []
+    for e in errs[:5]:
+        if isinstance(e, dict):
+            parts.append(str(e.get('message') or e))
+        else:
+            parts.append(str(e))
+    return '; '.join(parts)[:800]
+
+def _post_one_reply_cf(cf_req, auth_token, ct0, in_reply_to_tweet_id, tweet_text):
+    """Returns (rest_id_or_None, error_message_or_None)."""
+    variables = {
+        'tweet_text': tweet_text,
+        'reply': {'in_reply_to_tweet_id': in_reply_to_tweet_id, 'exclude_reply_user_ids': []},
+        'dark_request': False,
+        'media': {'media_entities': [], 'possibly_sensitive': False},
+        'semantic_annotation_ids': [],
+    }
+    headers = {
+        'authorization': f'Bearer {BEARER}',
+        'cookie': f'auth_token={auth_token}; ct0={ct0}',
+        'x-csrf-token': ct0,
+        'x-twitter-auth-type': 'OAuth2Session',
+        'x-twitter-active-user': 'yes',
+        'x-twitter-client-language': 'en',
+        'content-type': 'application/json',
+        'user-agent': (
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 '
+            '(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
+        ),
+        'origin': 'https://x.com',
+        'referer': 'https://x.com/home',
+    }
+    payload = {
+        'variables': variables,
+        'features': dict(_CREATE_TWEET_FEATURES),
+        'queryId': CREATE_TWEET_QUERY_ID,
+    }
+    try:
+        resp = cf_req.post(
+            GRAPHQL_CREATE_TWEET_URL,
+            headers=headers,
+            json=payload,
+            impersonate='chrome',
+            timeout=30,
+        )
+    except Exception as e:
+        return None, str(e)[:500]
+    try:
+        data = resp.json()
+    except Exception:
+        return None, f'HTTP {resp.status_code} non-JSON body'
+    if resp.status_code >= 400:
+        msg = _graphql_errors_text(data) or data.get('errors') or resp.text[:400]
+        return None, f'HTTP {resp.status_code}: {msg}'[:800]
+    err_txt = _graphql_errors_text(data)
+    if err_txt:
+        return None, err_txt
+    rid = _create_tweet_rest_id(data)
+    if rid:
+        return rid, None
+    return None, (json.dumps(data)[:600] if data else 'empty response')
+
+def _mark_reply_task_posted(task_id, posted_tweet_id):
+    conn = db()
+    conn.execute(
+        'UPDATE reply_tasks SET status=?, posted_at=datetime("now"), posted_tweet_id=?, error_msg=NULL '
+        "WHERE id=? AND status='approved'",
+        ('posted', str(posted_tweet_id), task_id),
+    )
+    conn.commit()
+    conn.close()
+
+def _mark_reply_task_failed(task_id, error_msg):
+    msg = (error_msg or '')[:900]
+    conn = db()
+    conn.execute(
+        "UPDATE reply_tasks SET status=?, error_msg=? WHERE id=? AND status='approved'",
+        ('failed', msg, task_id),
+    )
+    conn.commit()
+    conn.close()
+
+def _post_replies_worker(cf_req, job_id, work_items, pool):
+    log('INFO', f'post_replies job {job_id}: starting {len(work_items)} task(s), 20s between posts')
+    for i, it in enumerate(work_items):
+        if i > 0:
+            time.sleep(20)
+        tid = it['task_id']
+        tweet_id = it['tweet_id']
+        text = (it['reply_text'] or '').strip()
+        if not text:
+            _mark_reply_task_failed(tid, 'empty reply text')
+            continue
+        if not tweet_id:
+            _mark_reply_task_failed(tid, 'missing tweet_id (no post_url / post_id)')
+            continue
+        cred = _pick_pool_creds(pool, it.get('account_id'))
+        if not cred:
+            _mark_reply_task_failed(tid, 'no credentials in pool for this account')
+            continue
+        rest_id, err = _post_one_reply_cf(
+            cf_req, cred['auth_token'], cred['ct0'], tweet_id, text
+        )
+        if rest_id:
+            _mark_reply_task_posted(tid, rest_id)
+            log('INFO', f'post_replies job {job_id}: posted task={tid[:8]}… tweet={rest_id}')
+        else:
+            _mark_reply_task_failed(tid, err or 'unknown error')
+            log('WARN', f'post_replies job {job_id}: failed task={tid[:8]}… {err}')
+    log('INFO', f'post_replies job {job_id}: finished')
+
+def local_post_replies(body):
+    """
+    Post approved reply_tasks to Twitter using GraphQL CreateTweet + curl_cffi Chrome TLS.
+    Runs posting in a background thread with 20s delay between posts.
+    """
+    body = body or {}
+    cf_req = _ensure_curl_cffi_requests()
+    if not cf_req:
+        return {'status': 'error', 'message': 'curl_cffi is required; pip install curl_cffi failed'}
+    pool = build_credentials_pool()
+    if not pool:
+        return {'status': 'error', 'message': 'No credentials in pool. Add an account with a valid session.'}
+    raw_ids = body.get('task_ids')
+    if raw_ids is None:
+        id_list = None
+    else:
+        if isinstance(raw_ids, (list, tuple)):
+            id_list = [str(x).strip() for x in raw_ids if str(x).strip()]
+        else:
+            id_list = [str(raw_ids).strip()] if str(raw_ids).strip() else []
+        if not id_list:
+            return {'status': 'queued', 'count': 0, 'job_id': str(uuid.uuid4()), 'message': 'task_ids empty'}
+    conn = db()
+    if id_list is None:
+        rows = conn.execute(
+            "SELECT rt.id AS task_id, rt.post_id, rt.account_id, "
+            "COALESCE(rt.edited_reply, rt.generated_reply) AS reply_text, p.url AS post_url "
+            "FROM reply_tasks rt LEFT JOIN posts p ON rt.post_id = p.id "
+            "WHERE rt.status='approved' ORDER BY rt.created_at ASC"
+        ).fetchall()
+    else:
+        qm = ','.join('?' * len(id_list))
+        rows = conn.execute(
+            f'SELECT rt.id AS task_id, rt.post_id, rt.account_id, '
+            f'COALESCE(rt.edited_reply, rt.generated_reply) AS reply_text, p.url AS post_url '
+            f'FROM reply_tasks rt LEFT JOIN posts p ON rt.post_id = p.id '
+            f"WHERE rt.status='approved' AND rt.id IN ({qm}) ORDER BY rt.created_at ASC",
+            tuple(id_list),
+        ).fetchall()
+    conn.close()
+    work_items = []
+    for r in rows:
+        tweet_id = _tweet_id_for_reply(r['post_url'], r['post_id'])
+        work_items.append({
+            'task_id': r['task_id'],
+            'post_id': r['post_id'],
+            'account_id': r['account_id'],
+            'reply_text': r['reply_text'] or '',
+            'tweet_id': tweet_id,
+        })
+    job_id = str(uuid.uuid4())
+    if not work_items:
+        return {'status': 'queued', 'count': 0, 'job_id': job_id, 'message': 'No approved tasks to post'}
+    threading.Thread(
+        target=_post_replies_worker,
+        args=(cf_req, job_id, work_items, pool),
+        daemon=True,
+        name=f'post_replies_{job_id[:8]}',
+    ).start()
+    return {'status': 'queued', 'count': len(work_items), 'job_id': job_id}
+
 # ── Run ──────────────────────────────────────────────────
 @app.route('/api/run/discover',methods=['POST'])
 def run_discover():return jsonify(run_expert('tw_discover',request.json or{}))
@@ -774,6 +1061,9 @@ def run_posts():return jsonify(run_expert('tw_posts',request.json or{}))
 def run_generate():return jsonify(run_expert('tw_generate',request.json or{}))
 @app.route('/api/run/post',methods=['POST'])
 def run_post():return jsonify(run_expert('tw_post',request.json or{}))
+@app.route('/api/run/post_replies',methods=['POST'])
+def run_post_replies():
+    return jsonify(local_post_replies(request.json or {}))
 @app.route('/api/run/monitor',methods=['POST'])
 def run_monitor():return jsonify(run_expert('tw_monitor',{'action':'check'}))
 @app.route('/api/run/search_getx',methods=['POST'])
@@ -869,34 +1159,7 @@ def auth_tw_cancel():
 # ════════════════════════════════════════════════════════
 @app.route('/api/credentials/pool', methods=['GET'])
 def credentials_pool():
-    conn = db()
-    rows = conn.execute(
-        'SELECT id,username,health_score,circuit_state '
-        'FROM accounts WHERE role_discovery=1 ORDER BY health_score DESC'
-    ).fetchall()
-    conn.close()
-    pool = []
-    for r in rows:
-        if (r['circuit_state'] or 'closed') == 'open':
-            continue
-        session_raw = kv_get_auth(f"tw_session_{r['id']}")
-        if not session_raw:
-            continue
-        try:
-            sess = json.loads(session_raw)
-            at = sess.get('auth_token', '')
-            ct = sess.get('ct0', '')
-            if at and ct and len(at) > 10 and len(ct) > 10:
-                pool.append({
-                    'account_id': r['id'],
-                    'username':   r['username'],
-                    'auth_token': at,
-                    'ct0':        ct,
-                    'health_score': r['health_score'],
-                    'circuit_state': r['circuit_state'] or 'closed'
-                })
-        except Exception:
-            pass
+    pool = build_credentials_pool()
     log('INFO', f'credentials/pool → {len(pool)} accounts')
     return jsonify({'pool': pool, 'pool_size': len(pool), 'status': 'success'})
 
