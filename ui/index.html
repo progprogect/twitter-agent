@@ -90,8 +90,9 @@ tr:last-child td{border-bottom:none;}
 .p-bio-full{font-size:13px;line-height:1.5;color:var(--t2);margin-top:8px;max-width:min(560px,100%);white-space:pre-wrap;word-break:break-word;}
 .filter-panel{padding:16px 18px;border-bottom:1px solid var(--bd);background:linear-gradient(180deg,var(--sf2) 0%,var(--sf) 100%);}
 form.filter-panel{margin:0;display:block;}
-.outreach-stack{display:grid;}
-.outreach-stack>.outreach-pane{grid-area:1/1;}
+/* Stack outreach subtabs in normal flow — shared grid-area caused all panes
+   to occupy one cell; some environments still let a hidden pane intercept clicks. */
+.outreach-stack{display:block;}
 .filter-panel-head{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.55px;color:var(--t3);margin-bottom:12px;}
 .filter-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(148px,1fr));gap:12px 18px;align-items:end;}
 .filter-field label,.filter-field .filter-lbl{display:block;font-size:11px;font-weight:600;color:var(--t2);margin-bottom:5px;letter-spacing:.02em;}
@@ -298,7 +299,8 @@ form.filter-panel{margin:0;display:block;}
         </div>
 
         <div class="outreach-stack">
-        <div class="tbl-wrap outreach-pane" x-show="outreachSub==='all'">
+        <template x-if="outreachSub==='all'">
+        <div class="tbl-wrap outreach-pane">
           <table x-show="outreachFeed.length>0">
             <thead><tr><th style="width:40px"></th><th>Post</th><th>Author</th><th style="text-align:right">Likes</th></tr></thead>
             <tbody>
@@ -330,8 +332,10 @@ form.filter-panel{margin:0;display:block;}
             <span class="tbl-count" x-text="'Page '+outreachFeedPage+' / '+feedMaxPage()"></span>
           </div>
         </div>
+        </template>
 
-        <div class="tbl-wrap outreach-pane" x-show="outreachSub==='posts'">
+        <template x-if="outreachSub==='posts'">
+        <div class="tbl-wrap outreach-pane">
           <form class="tbl-bar" style="flex-wrap:wrap;align-items:center" @submit.prevent="applyOutreachPosts()">
             <input type="date" class="inp" style="width:auto;min-width:130px" x-model="opDateFrom" @change="applyOutreachPosts()">
             <span style="font-size:12px;color:var(--t3)">→</span>
@@ -358,15 +362,18 @@ form.filter-panel{margin:0;display:block;}
           </table>
           <div x-show="!oposts.length" class="empty" style="padding:28px"><div class="empty-h">No posts match filters</div></div>
         </div>
+        </template>
 
-        <div class="tbl-wrap outreach-pane" x-show="outreachSub==='profiles'">
-          <form class="filter-panel" @submit.prevent="applyOutreachProfiles()">
+        <template x-if="outreachSub==='profiles'">
+        <div class="tbl-wrap outreach-pane">
+          <form class="filter-panel" novalidate @submit.prevent="applyOutreachProfiles()">
             <div class="filter-panel-head">Filters</div>
             <div class="filter-field" style="max-width:640px">
               <label for="pf-bio-q">Search in bio, name &amp; @username</label>
               <input id="pf-bio-q" name="profile_bio_search" type="text" class="inp" autocomplete="off"
                 placeholder="e.g. AI, developer, crypto — partial match"
-                x-model="pfBioSearch">
+                x-model="pfBioSearch"
+                @input="scheduleProfFilterApply()">
               <p class="filter-bio-hint">Case-insensitive partial match in bio, display name, or username. Press Enter or Apply.</p>
             </div>
             <div class="filter-grid" style="margin-top:16px">
@@ -423,6 +430,7 @@ form.filter-panel{margin:0;display:block;}
           </table>
           <div x-show="!oprProfiles.length" class="empty" style="padding:28px"><div class="empty-h">No profiles match these filters</div></div>
         </div>
+        </template>
         </div>
       </div>
 
@@ -677,6 +685,7 @@ function app(){return{
   oprProfiles:[],oprTotal:0,prpage:1,
   pfBioSearch:'',pfMinFollowers:'',pfMaxFollowers:'',pfLocation:'',pfBlue:'',
   pfSort:'discovered_at',
+  _profFilterDebounce:null,
 
   debugLogs:[],logFilter:'all',logAutoScroll:true,logLastUpdate:'—',_pollTimer:null,
 
@@ -793,6 +802,11 @@ function app(){return{
   applyOutreachProfiles(){
     this.prpage=1;
     this.loadOutreachProfiles();
+  },
+
+  scheduleProfFilterApply(){
+    clearTimeout(this._profFilterDebounce);
+    this._profFilterDebounce=setTimeout(()=>{this.applyOutreachProfiles();},400);
   },
 
   async loadOutreachProfiles(){
