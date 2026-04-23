@@ -22,7 +22,6 @@ def tw_search_getx(
     db_path_key: str = "tw_db_path",
     extella_token_key: str = "extella_api_token",
 ) -> dict:
-    import json
     import os
     import re
     import sqlite3
@@ -88,6 +87,8 @@ def tw_search_getx(
     seen_tweet_ids = set()
     api_calls = 0
     last_error = ""
+    consec_429 = 0
+    max_429_rounds = 8
 
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
@@ -148,10 +149,15 @@ def tw_search_getx(
             break
 
         if r.status_code == 429:
+            consec_429 += 1
             last_error = "rate_limited"
-            print("[3/6] ⏳ 429 — short backoff")
+            print(f"[3/6] ⏳ 429 — backoff ({consec_429}/{max_429_rounds})")
+            if consec_429 >= max_429_rounds:
+                last_error = "rate_limited_stopped"
+                break
             time.sleep(2.5)
             continue
+        consec_429 = 0
 
         if r.status_code != 200:
             try:
