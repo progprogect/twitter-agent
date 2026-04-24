@@ -31,7 +31,6 @@ a{color:inherit;text-decoration:none;}
 .sb-brand{padding:18px 16px 14px;border-bottom:1px solid rgba(255,255,255,.07);}
 .sb-logo{display:flex;align-items:center;gap:9px;margin-bottom:4px;}
 .sb-logo-icon{font-size:22px;}.sb-logo-text{font-size:15px;font-weight:700;color:#F1F5F9;letter-spacing:-.3px;}
-.sb-phase{font-size:10px;color:var(--sbt);text-transform:uppercase;letter-spacing:.8px;padding-left:31px;}
 .sb-nav{flex:1;padding:8px;overflow-y:auto;}
 .nav-item{display:flex;align-items:center;gap:9px;width:100%;padding:8px 10px;border-radius:6px;color:var(--sbt);font-size:13px;font-weight:500;cursor:pointer;transition:background var(--tr),color var(--tr);text-align:left;margin-bottom:1px;}
 .nav-item:hover{background:var(--sbh);color:#CBD5E1;}.nav-item.active{background:var(--sba);color:#fff;}
@@ -120,6 +119,13 @@ form.filter-panel{margin:0;display:block;}
 .chip{display:inline-block;padding:2px 8px;background:var(--blb);border:1px solid #BFDBFE;border-radius:12px;font-size:11px;color:#1E40AF;margin:2px;font-weight:500;}
 .chip-topic{background:#FDF4FF;border-color:#E9D5FF;color:#7C3AED;}
 /* Queue */
+.queue-tabs{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:4px;}
+.qtab{display:inline-flex;align-items:center;gap:6px;padding:7px 12px;border-radius:var(--rs);font-size:12.5px;font-weight:500;color:var(--t2);border:1px solid var(--bd);background:var(--sf);cursor:pointer;transition:background var(--tr),border-color var(--tr),color var(--tr);}
+.qtab:hover{background:var(--sf2);border-color:#CBD5E1;color:var(--t1);}
+.qtab.active{background:var(--bl);color:#fff;border-color:var(--bl);}
+.qtab.active:hover{background:var(--blh);border-color:var(--blh);color:#fff;}
+.qtab-cnt{font-size:11px;font-weight:700;min-width:1.25em;text-align:center;padding:1px 6px;border-radius:8px;background:rgba(15,23,42,.06);color:inherit;}
+.qtab.active .qtab-cnt{background:rgba(255,255,255,.2);}
 .qc{background:var(--sf);border:1px solid var(--bd);border-radius:var(--r);box-shadow:var(--sh);margin-bottom:10px;transition:box-shadow var(--tr);}
 .qc:hover{box-shadow:var(--shm);}
 .qc-head{padding:10px 14px;background:var(--sf2);border-bottom:1px solid var(--bd);display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
@@ -205,7 +211,6 @@ form.filter-panel{margin:0;display:block;}
   <aside class="sb">
     <div class="sb-brand">
       <div class="sb-logo"><span class="sb-logo-icon">🐦</span><span class="sb-logo-text">TW Lead Agent</span></div>
-      <div class="sb-phase" x-text="phase||'idle'"></div>
     </div>
     <nav class="sb-nav">
       <button class="nav-item" :class="tab==='dashboard'&&'active'" @click="go('dashboard')"><span class="nav-icon">🏠</span><span class="nav-label">Dashboard</span></button>
@@ -265,7 +270,6 @@ form.filter-panel{margin:0;display:block;}
             <div class="status-row"><span :class="'dot '+(pendingCount>0?'dot-am':'dot-gn')"></span><span class="s-lbl">Pending Tasks</span><span class="s-val" x-text="pendingCount+' waiting'"></span></div>
           </div></div>
           <div class="card"><div class="card-head"><span class="card-title">Configuration</span></div><div class="card-body">
-            <div class="status-row"><span class="dot dot-gn"></span><span class="s-lbl">Workflow Phase</span><span class="s-val" x-text="phase||'idle'"></span></div>
             <div class="status-row"><span class="dot dot-gy"></span><span class="s-lbl">AI Provider</span><span class="s-val" x-text="cfg.ai_provider||'extella'"></span></div>
             <div class="status-row"><span class="dot dot-gy"></span><span class="s-lbl">Reply Language</span><span class="s-val" x-text="cfg.reply_language==='auto'?'Auto-detect':'English only'"></span></div>
             <div class="status-row"><span :class="'dot '+(cfg.background_enabled==='true'?'dot-gn':'dot-gy')"></span><span class="s-lbl">Background Monitor</span><span class="s-val" x-text="cfg.background_enabled==='true'?'Enabled':'Disabled'"></span></div>
@@ -450,16 +454,29 @@ form.filter-panel{margin:0;display:block;}
 
       <!-- QUEUE -->
       <div x-show="tab==='queue'" class="fade">
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;flex-wrap:wrap">
-          <label for="sel-task-status" style="display:none">Status</label>
-          <select id="sel-task-status" name="task_status" class="sel" x-model="tF" @change="loadTasks()"><option value="pending">⏳ Pending</option><option value="approved">✅ Approved</option><option value="posted">🚀 Posted</option><option value="rejected">❌ Rejected</option></select>
-          <button x-show="tF==='approved'&&tasks.length>0" class="btn btn-primary btn-sm" @click="postAll()">🚀 Post All</button>
-          <button x-show="tF==='approved'&&tasks.length>0" class="btn btn-outline btn-sm" @click="postSelectedReplies()">Post Selected</button>
-          <button x-show="tF==='pending'&&tasks.length>0" class="btn btn-success btn-sm" @click="bulkApprove()">✓ Approve All</button>
-          <button class="btn btn-outline btn-sm" @click="runMonitor()" title="Check for replies to posted tweets">📡 Monitor</button>
-          <span style="font-size:11.5px;color:var(--t3);margin-left:auto" x-text="tasks.length+' tasks'"></span>
+        <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:14px">
+          <div class="queue-tabs">
+            <button type="button" class="qtab" :class="{'active':tF==='all'}" @click="tF='all';loadTasks()">All<span class="qtab-cnt" x-text="taskCounts.all"></span></button>
+            <button type="button" class="qtab" :class="{'active':tF==='pending'}" @click="tF='pending';loadTasks()">Pending<span class="qtab-cnt" x-text="taskCounts.pending"></span></button>
+            <button type="button" class="qtab" :class="{'active':tF==='approved'}" @click="tF='approved';loadTasks()">Approved<span class="qtab-cnt" x-text="taskCounts.approved"></span></button>
+            <button type="button" class="qtab" :class="{'active':tF==='posted'}" @click="tF='posted';loadTasks()">Posted<span class="qtab-cnt" x-text="taskCounts.posted"></span></button>
+            <button type="button" class="qtab" :class="{'active':tF==='rejected'}" @click="tF='rejected';loadTasks()">Rejected<span class="qtab-cnt" x-text="taskCounts.rejected"></span></button>
+          </div>
+          <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;font-size:12px;color:var(--t2)">
+            <span style="color:var(--t3);font-weight:600">Original post date</span>
+            <input type="date" class="inp" name="task_date_from" style="width:auto;min-width:130px" x-model="taskDateFrom" @change="loadTasks()">
+            <span style="color:var(--t3)">→</span>
+            <input type="date" class="inp" name="task_date_to" style="width:auto;min-width:130px" x-model="taskDateTo" @change="loadTasks()">
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <button x-show="tF==='approved'&&tasks.length>0" class="btn btn-primary btn-sm" @click="postAll()">🚀 Post All</button>
+            <button x-show="tF==='approved'&&tasks.length>0" class="btn btn-outline btn-sm" @click="postSelectedReplies()">Post Selected</button>
+            <button x-show="tF==='pending'&&tasks.length>0" class="btn btn-success btn-sm" @click="bulkApprove()">✓ Approve All</button>
+            <button class="btn btn-outline btn-sm" @click="runMonitor()" title="Check for replies to posted tweets">📡 Monitor</button>
+            <span style="font-size:11.5px;color:var(--t3);margin-left:auto" x-text="tasks.length+' tasks'"></span>
+          </div>
         </div>
-        <div x-show="tasks.length===0" class="empty"><div class="empty-icon" x-text="tF==='pending'?'⏳':tF==='posted'?'🚀':'📭'"></div><div class="empty-h" x-text="'No '+tF+' tasks'"></div></div>
+        <div x-show="tasks.length===0" class="empty"><div class="empty-icon" x-text="tF==='pending'?'⏳':tF==='posted'?'🚀':tF==='all'?'📭':'📭'"></div><div class="empty-h" x-text="tF==='all'?'No tasks':'No '+tF+' tasks'"></div></div>
         <template x-for="t in tasks" :key="t.id">
           <div class="qc">
             <div class="qc-head">
@@ -498,13 +515,21 @@ form.filter-panel{margin:0;display:block;}
 
       <!-- CONVERSATIONS -->
       <div x-show="tab==='conversations'" class="fade">
+        <div class="conv-toolbar" style="margin-bottom:10px">
+          <span style="font-size:12px;color:var(--t3);font-weight:600">Posted</span>
+          <input type="date" class="inp" name="conv_date_from" style="width:auto;min-width:130px" x-model="convDateFrom" @change="loadConversations()">
+          <span style="color:var(--t3)">→</span>
+          <input type="date" class="inp" name="conv_date_to" style="width:auto;min-width:130px" x-model="convDateTo" @change="loadConversations()">
+          <button type="button" class="btn btn-outline btn-sm" @click="clearConvDates()">Clear dates</button>
+          <span class="tbl-count" style="margin-left:auto" x-text="convThreadCount+' threads'"></span>
+        </div>
         <div class="conv-toolbar">
           <button type="button" class="btn btn-primary btn-sm" :disabled="convChecking" @click="checkReplies()">
             <span x-show="convChecking" class="spin"></span>
             <span x-text="convChecking?'Checking…':'Check for replies'"></span>
           </button>
           <span class="conv-meta" x-text="convLastChecked?'Last check: '+convLastChecked:''"></span>
-          <span class="tbl-count" style="margin-left:auto" x-text="(conversations.length||0)+' threads · '+totalReplies+' incoming'"></span>
+          <span class="tbl-count" style="margin-left:auto" x-text="totalReplies+' incoming'"></span>
         </div>
         <div x-show="conversations.length===0" class="empty">
           <div class="empty-icon">💬</div>
@@ -733,9 +758,10 @@ form.filter-panel{margin:0;display:block;}
 function app(){return{
   tab:'dashboard',
   tabs:[{id:'dashboard',label:'Dashboard'},{id:'outreach',label:'Outreach'},{id:'queue',label:'Reply Queue'},{id:'conversations',label:'Conversations'},{id:'analytics',label:'Analytics'},{id:'settings',label:'Settings'},{id:'debug',label:'Debug Logs'}],
-  accounts:[],profiles:[],tasks:[],analytics:[],cfg:{},stats:{},phase:'idle',
+  accounts:[],profiles:[],tasks:[],analytics:[],cfg:{},stats:{},
   profileTotal:0,
-  acct:'',tF:'pending',pendingCount:0,
+  acct:'',tF:'pending',pendingCount:0,taskDateFrom:'',taskDateTo:'',
+  taskCounts:{all:0,pending:0,approved:0,posted:0,rejected:0},
   showAdd:false,relinkTarget:null,
   na:{username:'',auth_token:'',ct0:'',mode:'direct'},
   authFlow:{status:'idle'},_authPoll:null,
@@ -758,7 +784,8 @@ function app(){return{
   debugLogs:[],logFilter:'all',logAutoScroll:true,logLastUpdate:'—',_pollTimer:null,
   postReplySel:[],_afterPostPoll:null,_afterPostPollN:0,
 
-  conversations:[],totalReplies:0,convLastChecked:null,convChecking:false,
+  conversations:[],totalReplies:0,convThreadCount:0,convDateFrom:'',convDateTo:'',
+  convLastChecked:null,convChecking:false,
 
   toast:{on:false,msg:'',ico:'ℹ️'},_toastTimer:null,
 
@@ -774,6 +801,7 @@ function app(){return{
     this.tab=id;
     if(id==='outreach')this.switchOutreach(this.outreachSub);
     if(id==='debug')this.loadLogs();
+    if(id==='queue')this.loadTasks();
     if(id==='conversations')this.loadConversations();
   },
 
@@ -813,7 +841,6 @@ function app(){return{
       action:'create_batch',
       post_ids:this.selectedPostIds.join(','),
       reply_intent:this.genModal.intent||'helpful and curious',
-      account_id:this.acct||'',
       account_id:this.acct||''
     });
     this.genModal.open=false;
@@ -937,7 +964,7 @@ function app(){return{
   },
 
   async load(){
-    await Promise.all([this.loadAccounts(),this.loadProfiles(),this.loadTasks(),this.loadAnalytics(),this.loadSettings(),this.loadPhase()]);
+    await Promise.all([this.loadAccounts(),this.loadProfiles(),this.loadTasks(),this.loadAnalytics(),this.loadSettings()]);
     if(this.tab==='outreach')this.switchOutreach(this.outreachSub);
     if(this.tab==='conversations')await this.loadConversations();
   },
@@ -948,16 +975,40 @@ function app(){return{
     if(r.total!==undefined)this.profileTotal=r.total;
   },
   async loadTasks(){
-    const r=await this.api('/api/tasks?status='+this.tF+'&account_id='+this.acct);
+    let listUrl='/api/tasks?account_id='+encodeURIComponent(this.acct||'');
+    if(this.tF!=='all')listUrl+='&status='+encodeURIComponent(this.tF);
+    else listUrl+='&status=all';
+    if(this.taskDateFrom)listUrl+='&date_from='+encodeURIComponent(this.taskDateFrom);
+    if(this.taskDateTo)listUrl+='&date_to='+encodeURIComponent(this.taskDateTo);
+    const r=await this.api(listUrl);
     if(r.tasks)this.tasks=r.tasks.map(t=>({...t,_ed:false,_txt:t.final_reply||t.generated_reply||''}));
-    const p=await this.api('/api/tasks?status=pending');if(p.tasks)this.pendingCount=p.tasks.length;
+    else this.tasks=[];
+    const c=await this.api('/api/tasks/counts');
+    if(c&&c.status==='success'&&c.counts){
+      this.taskCounts={all:0,pending:0,approved:0,posted:0,rejected:0,...c.counts};
+      this.pendingCount=+this.taskCounts.pending||0;
+    }
   },
   async loadAnalytics(){const r=await this.api('/api/analytics');if(r.timeline)this.analytics=r.timeline;if(r.summary)this.stats=r.summary;},
+  clearConvDates(){
+    this.convDateFrom='';
+    this.convDateTo='';
+    this.loadConversations();
+  },
   async loadConversations(){
-    const r=await this.api('/api/conversations');
-    if(r.threads){
+    const qs=new URLSearchParams();
+    if(this.convDateFrom)qs.set('date_from',this.convDateFrom);
+    if(this.convDateTo)qs.set('date_to',this.convDateTo);
+    const suf=qs.toString();
+    const r=await this.api(suf?'/api/conversations?'+suf:'/api/conversations');
+    if(Array.isArray(r.threads)){
       this.conversations=r.threads;
       this.totalReplies=r.threads.reduce((s,t)=>s+(+t.reply_count||0),0);
+      this.convThreadCount=typeof r.total==='number'?r.total:r.threads.length;
+    }else{
+      this.conversations=[];
+      this.totalReplies=0;
+      this.convThreadCount=0;
     }
   },
   async checkReplies(){
@@ -974,7 +1025,6 @@ function app(){return{
     }
   },
   async loadSettings(){const r=await this.api('/api/settings');if(r&&!r.error)this.cfg=r;},
-  async loadPhase(){const r=await this.api('/api/workflow/state');if(r&&r.phase)this.phase=r.phase;},
   async loadLogs(){
     const r=await this.api('/api/logs?lines=300');
     if(r.logs){this.debugLogs=r.logs;this.logLastUpdate=new Date().toLocaleTimeString();

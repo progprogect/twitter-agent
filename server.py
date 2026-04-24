@@ -766,14 +766,52 @@ def dashboard_feed():
     conn.close();return jsonify({'items':[dict(r) for r in rows],'total':total,'page':page,'status':'success'})
 
 # ── Tasks ────────────────────────────────────────────────
+def _reply_task_filters(include_status=True):
+    """Build WHERE clause + params for reply_tasks + posts join (task list)."""
+    cl,pl=[],[]
+    if include_status:
+        if 'status' not in request.args:
+            s='pending'
+        else:
+            s_raw=(request.args.get('status') or '').strip().lower()
+            s=None if s_raw in ('','all') else s_raw
+        if s:
+            cl.append('rt.status=?')
+            pl.append(s)
+    ai=request.args.get('account_id','').strip()
+    if ai:
+        cl.append('rt.account_id=?')
+        pl.append(ai)
+    df=(request.args.get('date_from')or'').strip()[:10]
+    dt=(request.args.get('date_to')or'').strip()[:10]
+    if df:
+        cl.append('DATE(p.posted_at) >= DATE(?)')
+        pl.append(df)
+    if dt:
+        cl.append('DATE(p.posted_at) <= DATE(?)')
+        pl.append(dt)
+    w=('WHERE '+' AND '.join(cl)) if cl else ''
+    return w,pl
+
+@app.route('/api/tasks/counts',methods=['GET'])
+def get_task_counts():
+    conn=db()
+    rows=conn.execute('SELECT status, COUNT(*) as n FROM reply_tasks GROUP BY status').fetchall()
+    total=conn.execute('SELECT COUNT(*) FROM reply_tasks').fetchone()[0]
+    conn.close()
+    counts={'all':total}
+    for r in rows:
+        counts[r['status']]=r['n']
+    return jsonify({'status':'success','counts':counts})
+
 @app.route('/api/tasks',methods=['GET'])
 def get_tasks():
-    s=request.args.get('status','pending');ai=request.args.get('account_id','')
-    conn=db();cl,pl=[],[]
-    if s:cl.append('rt.status=?');pl.append(s)
-    if ai:cl.append('rt.account_id=?');pl.append(ai)
-    w=('WHERE '+' AND '.join(cl)) if cl else ''
-    rows=conn.execute(f'SELECT rt.*,COALESCE(rt.edited_reply,rt.generated_reply) as final_reply,p.text AS post_text,p.url AS post_url,pr.username AS profile_username,a.username AS account_username FROM reply_tasks rt LEFT JOIN posts p ON rt.post_id=p.id LEFT JOIN profiles pr ON rt.profile_id=pr.id LEFT JOIN accounts a ON rt.account_id=a.id {w} ORDER BY rt.created_at DESC LIMIT 200',pl).fetchall()
+    w,pl=_reply_task_filters(include_status=True)
+    conn=db()
+    rows=conn.execute(
+        f'SELECT rt.*,COALESCE(rt.edited_reply,rt.generated_reply) as final_reply,p.text AS post_text,p.url AS post_url,pr.username AS profile_username,a.username AS account_username FROM reply_tasks rt LEFT JOIN posts p ON rt.post_id=p.id LEFT JOIN profiles pr ON rt.profile_id=pr.id LEFT JOIN accounts a ON rt.account_id=a.id {w} ORDER BY rt.created_at DESC LIMIT 200',
+        pl,
+    ).fetchall()
     conn.close();return jsonify({'tasks':[dict(r) for r in rows],'count':len(rows),'status':'success'})
 
 @app.route('/api/tasks/<tid>/approve',methods=['POST'])
@@ -1292,8 +1330,21 @@ def run_check_replies():
 @app.route('/api/conversations',methods=['GET'])
 def get_conversations():
     """Threads: posted reply_tasks + incoming conversations rows."""
+    df=(request.args.get('date_from')or'').strip()[:10]
+    dt=(request.args.get('date_to')or'').strip()[:10]
+    wh=[
+        "rt.status='posted'",
+        "rt.posted_tweet_id IS NOT NULL",
+        "TRIM(rt.posted_tweet_id)!=''",
+    ]
+    pl=[]
+    if df:
+        wh.append('DATE(rt.posted_at) >= DATE(?)');pl.append(df)
+    if dt:
+        wh.append('DATE(rt.posted_at) <= DATE(?)');pl.append(dt)
+    where_sql=' AND '.join(wh)
     conn=db()
-    rows=conn.execute("""
+    rows=conn.execute(f"""
         SELECT
             rt.id AS task_id,
             rt.posted_tweet_id,
@@ -1311,9 +1362,9 @@ def get_conversations():
         FROM reply_tasks rt
         LEFT JOIN posts p ON rt.post_id=p.id
         LEFT JOIN profiles pr ON rt.profile_id=pr.id
-        WHERE rt.status='posted' AND rt.posted_tweet_id IS NOT NULL AND TRIM(rt.posted_tweet_id)!=''
+        WHERE {where_sql}
         ORDER BY rt.posted_at DESC
-    """).fetchall()
+    """,pl).fetchall()
     threads=[]
     for row in rows:
         d=dict(row)
