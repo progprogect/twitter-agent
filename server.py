@@ -1329,15 +1329,35 @@ def _post_one_reply_cf(cf_req, auth_token, ct0, in_reply_to_tweet_id, tweet_text
     rid = _create_tweet_rest_id(data)
     if rid:
         return rid, None
+    try:
+        ct = (data.get('data') or {}).get('create_tweet') or {}
+        if 'tweet_results' in ct:
+            synthetic_id = f'posted_no_id_{int(time.time())}'
+            log('WARN', 'CreateTweet: tweet_results empty, marking as posted with synthetic ID')
+            return synthetic_id, None
+    except Exception:
+        pass
     return None, (json.dumps(data)[:600] if data else 'empty response')
 
 def _mark_reply_task_posted(task_id, posted_tweet_id):
     conn = db()
+    row = conn.execute('SELECT account_id FROM reply_tasks WHERE id=?', (task_id,)).fetchone()
+    account_id = row['account_id'] if row else None
     conn.execute(
         'UPDATE reply_tasks SET status=?, posted_at=datetime("now"), posted_tweet_id=?, error_msg=NULL '
         "WHERE id=? AND status='approved'",
         ('posted', str(posted_tweet_id), task_id),
     )
+    if account_id:
+        today = date.today().isoformat()
+        conn.execute(
+            """
+            INSERT INTO analytics (id, account_id, date, replies_sent)
+            VALUES (?, ?, ?, 1)
+            ON CONFLICT(account_id, date) DO UPDATE SET replies_sent = replies_sent + 1
+            """,
+            (str(uuid.uuid4()), account_id, today),
+        )
     conn.commit()
     conn.close()
 

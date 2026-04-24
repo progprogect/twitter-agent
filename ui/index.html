@@ -132,6 +132,9 @@ form.filter-panel{margin:0;display:block;}
 .qtab.active:hover{background:var(--blh);border-color:var(--blh);color:#fff;}
 .qtab-cnt{font-size:11px;font-weight:700;min-width:1.25em;text-align:center;padding:1px 6px;border-radius:8px;background:rgba(15,23,42,.06);color:inherit;}
 .qtab.active .qtab-cnt{background:rgba(255,255,255,.2);}
+.queue-subtab{padding:8px 18px;font-size:13px;font-weight:600;color:var(--t2);background:none;border:none;border-bottom:2px solid transparent;margin-bottom:-2px;cursor:pointer;transition:all .15s;}
+.queue-subtab:hover{color:var(--t1);}
+.queue-subtab.active{color:var(--bl);border-bottom-color:var(--bl);}
 .sched-panel{background:var(--sf);border:1px solid var(--bd);border-radius:var(--r);box-shadow:var(--sh);padding:14px 16px;margin-bottom:12px;}
 .sched-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px;}
 .sched-title{font-size:14px;font-weight:700;color:var(--t1);}
@@ -487,8 +490,12 @@ form.filter-panel{margin:0;display:block;}
 
       <!-- QUEUE -->
       <div x-show="tab==='queue'" class="fade">
+        <div style="display:flex;gap:0;margin-bottom:16px;border-bottom:2px solid var(--bd)">
+          <button type="button" class="queue-subtab" :class="{'active':queueView==='review'}" @click="queueView='review';tF='pending';taskPage=1;loadTasks();loadSchedulerStatus()">✏️ Review</button>
+          <button type="button" class="queue-subtab" :class="{'active':queueView==='schedule'}" @click="queueView='schedule';tF='approved';taskPage=1;loadTasks();loadSchedulerStatus()">📤 Schedule<span x-show="taskCounts.approved>0" class="qtab-cnt" style="margin-left:6px" x-text="taskCounts.approved"></span></button>
+        </div>
         <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:14px">
-          <div class="sched-panel">
+          <div class="sched-panel" x-show="queueView==='schedule'">
             <div class="sched-head">
               <span class="sched-title">Posting Schedule</span>
               <span class="dot" :class="schedRunning&&!schedPaused?'dot-gn':(schedRunning&&schedPaused?'dot-yl':'dot-gy')"></span>
@@ -513,11 +520,11 @@ form.filter-panel{margin:0;display:block;}
             <div class="sched-hint">Random 20–30s between posts when the queue is running.</div>
           </div>
           <div class="queue-tabs">
-            <button type="button" class="qtab" :class="{'active':tF==='all'}" @click="tF='all';taskPage=1;loadTasks()">All<span class="qtab-cnt" x-text="taskCounts.all"></span></button>
-            <button type="button" class="qtab" :class="{'active':tF==='pending'}" @click="tF='pending';taskPage=1;loadTasks()">Pending<span class="qtab-cnt" x-text="taskCounts.pending"></span></button>
-            <button type="button" class="qtab" :class="{'active':tF==='approved'}" @click="tF='approved';taskPage=1;loadTasks()">Approved<span class="qtab-cnt" x-text="taskCounts.approved"></span></button>
-            <button type="button" class="qtab" :class="{'active':tF==='posted'}" @click="tF='posted';taskPage=1;loadTasks()">Posted<span class="qtab-cnt" x-text="taskCounts.posted"></span></button>
-            <button type="button" class="qtab" :class="{'active':tF==='rejected'}" @click="tF='rejected';taskPage=1;loadTasks()">Rejected<span class="qtab-cnt" x-text="taskCounts.rejected"></span></button>
+            <button type="button" class="qtab" x-show="queueView==='review'" :class="{'active':tF==='all'}" @click="tF='all';taskPage=1;loadTasks()">All<span class="qtab-cnt" x-text="taskCounts.all"></span></button>
+            <button type="button" class="qtab" x-show="queueView==='review'" :class="{'active':tF==='pending'}" @click="tF='pending';taskPage=1;loadTasks()">Pending<span class="qtab-cnt" x-text="taskCounts.pending"></span></button>
+            <button type="button" class="qtab" x-show="queueView==='schedule'" :class="{'active':tF==='approved'}" @click="tF='approved';taskPage=1;loadTasks()">Approved<span class="qtab-cnt" x-text="taskCounts.approved"></span></button>
+            <button type="button" class="qtab" x-show="queueView==='schedule'" :class="{'active':tF==='posted'}" @click="tF='posted';taskPage=1;loadTasks()">Posted<span class="qtab-cnt" x-text="taskCounts.posted"></span></button>
+            <button type="button" class="qtab" x-show="queueView==='review'" :class="{'active':tF==='rejected'}" @click="tF='rejected';taskPage=1;loadTasks()">Rejected<span class="qtab-cnt" x-text="taskCounts.rejected"></span></button>
           </div>
           <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;font-size:12px;color:var(--t2)">
             <span style="color:var(--t3);font-weight:600">Original post date</span>
@@ -526,9 +533,9 @@ form.filter-panel{margin:0;display:block;}
             <input type="date" class="inp" name="task_date_to" style="width:auto;min-width:130px" x-model="taskDateTo" @change="taskPage=1;loadTasks()">
           </div>
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-            <button x-show="tF==='approved'&&tasks.length>0" class="btn btn-primary btn-sm" @click="postAll()">🚀 Post All</button>
-            <button x-show="tF==='approved'&&tasks.length>0" class="btn btn-outline btn-sm" @click="postSelectedReplies()">Post Selected</button>
-            <button x-show="tF==='pending'&&tasks.length>0" class="btn btn-success btn-sm" @click="bulkApprove()">✓ Approve All</button>
+            <button x-show="queueView==='schedule'&&tF==='approved'&&tasks.length>0" class="btn btn-primary btn-sm" @click="postAll()">🚀 Post All</button>
+            <button x-show="queueView==='schedule'&&tF==='approved'&&tasks.length>0" class="btn btn-outline btn-sm" @click="postSelectedReplies()">Post Selected</button>
+            <button x-show="queueView==='review'&&tF==='pending'&&tasks.length>0" class="btn btn-success btn-sm" @click="bulkApprove()">✓ Approve All</button>
             <button class="btn btn-outline btn-sm" @click="runMonitor()" title="Check for replies to posted tweets">📡 Monitor</button>
             <span style="font-size:11.5px;color:var(--t3);margin-left:auto" x-text="(taskTotal||0)+' tasks'"></span>
           </div>
@@ -567,7 +574,12 @@ form.filter-panel{margin:0;display:block;}
                 <span style="font-size:12px;color:var(--gn);font-weight:500">✓ Approved</span>
                 <button type="button" class="btn btn-outline btn-sm" :disabled="t._posting" @click="postNow(t)">Now</button>
               </div>
-              <div x-show="t.status==='posted'" style="font-size:12px;color:var(--bl);font-weight:500">🚀 Posted</div>
+              <div x-show="t.status==='posted'" style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;font-size:12px;color:var(--bl);font-weight:500">
+                <span>🚀 Posted</span>
+                <a x-show="t.posted_tweet_id && !String(t.posted_tweet_id).startsWith('posted_no_id_')" class="pc-link" :href="'https://x.com/i/status/'+String(t.posted_tweet_id).trim()" target="_blank" rel="noopener">Open reply ↗</a>
+                <span x-show="t.posted_tweet_id && String(t.posted_tweet_id).startsWith('posted_no_id_')" style="color:var(--t3);font-weight:500">(no ID from X)</span>
+                <span x-show="t.posted_at" style="color:var(--t3);font-weight:500" x-text="'· '+(t.posted_at||'').replace('T',' ').slice(0,19)"></span>
+              </div>
             </div>
           </div>
         </template>
@@ -873,7 +885,7 @@ function app(){return{
   tabs:[{id:'dashboard',label:'Dashboard'},{id:'outreach',label:'Outreach'},{id:'queue',label:'Reply Queue'},{id:'conversations',label:'Conversations'},{id:'analytics',label:'Analytics'},{id:'settings',label:'Settings'},{id:'debug',label:'Debug Logs'}],
   accounts:[],profiles:[],tasks:[],analytics:[],cfg:{},stats:{},
   profileTotal:0,
-  acct:'',tF:'pending',pendingCount:0,taskDateFrom:'',taskDateTo:'',taskPage:1,taskTotal:0,
+  acct:'',queueView:'review',tF:'pending',pendingCount:0,taskDateFrom:'',taskDateTo:'',taskPage:1,taskTotal:0,
   taskCounts:{all:0,pending:0,approved:0,posted:0,rejected:0},
   showAdd:false,relinkTarget:null,
   na:{username:'',auth_token:'',ct0:'',mode:'direct'},
@@ -971,6 +983,9 @@ function app(){return{
     if(r.status==='success'){
       this.showToast(`Tasks created: ${r.tasks_created||0} (failed: ${r.tasks_failed||0})`,'✅');
       this.selectedPostIds=[];
+      this.queueView='review';
+      this.tF='pending';
+      this.taskPage=1;
       this.go('queue');
       await this.loadTasks();
     }else{
