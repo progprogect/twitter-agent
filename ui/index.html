@@ -539,6 +539,7 @@ form.filter-panel{margin:0;display:block;}
                   <span style="color:var(--t2)" x-text="schedRunning&&!schedPaused?'Sending':(schedPaused?'Paused':'Idle')"></span>
                 </div>
                 <span x-show="schedRunning&&!schedPaused&&schedNextIn!==null" style="font-size:12px;color:var(--t2)" x-text="'Next in '+schedNextIn+'s'"></span>
+                <span x-show="schedPaused&&schedPauseUntil" style="font-size:11px;color:var(--am)" x-text="'Auto-resume at: ' + (schedPauseUntil ? new Date(schedPauseUntil).toLocaleTimeString() : '')"></span>
                 <span style="font-size:12px;color:var(--t3);margin-left:auto" x-text="schedSentToday+' / '+schedDailyLimit+' sent today'"></span>
               </div>
             </div>
@@ -603,11 +604,12 @@ form.filter-panel{margin:0;display:block;}
                 <button type="button" class="btn btn-outline btn-sm" :disabled="t._posting" @click="postNow(t)">▶ Now</button>
                 <button type="button" class="btn btn-danger btn-sm" @click="reject(t)">🗑 Remove</button>
               </div>
-              <div x-show="t.status==='posted'" style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;font-size:12px;color:var(--bl);font-weight:500">
-                <span>🚀 Posted</span>
-                <a x-show="t.posted_tweet_id && !String(t.posted_tweet_id).startsWith('posted_no_id_')" class="pc-link" :href="'https://x.com/i/status/'+String(t.posted_tweet_id).trim()" target="_blank" rel="noopener">Open reply ↗</a>
-                <span x-show="t.posted_tweet_id && String(t.posted_tweet_id).startsWith('posted_no_id_')" style="color:var(--t3);font-weight:500">(no ID from X)</span>
-                <span x-show="t.posted_at" style="color:var(--t3);font-weight:500" x-text="'· '+(t.posted_at||'').replace('T',' ').slice(0,19)"></span>
+              <div x-show="t.status==='posted'" style="display:flex;flex-direction:column;gap:6px;font-size:12px;font-weight:500">
+                <div x-show="t.posted_tweet_id && String(t.posted_tweet_id).startsWith('posted_no_id_')" style="font-size:12px;color:var(--am);font-weight:500">⚠️ Unconfirmed (Twitter may have rejected)</div>
+                <div x-show="t.posted_tweet_id && !String(t.posted_tweet_id).startsWith('posted_no_id_')" style="font-size:12px;color:var(--bl);font-weight:500">
+                  <a :href="'https://x.com/i/status/'+String(t.posted_tweet_id).trim()" target="_blank" rel="noopener" style="color:var(--bl)" class="pc-link">🚀 Posted → View tweet</a>
+                </div>
+                <div x-show="t.posted_at" style="color:var(--t3);font-weight:500;font-size:12px" x-text="'· '+(t.posted_at||'').replace('T',' ').slice(0,19)"></div>
               </div>
             </div>
           </div>
@@ -626,8 +628,11 @@ form.filter-panel{margin:0;display:block;}
                   <div class="qc-panel"><div class="qc-plabel">Original Tweet</div><div class="qc-text dim" x-text="schedTweetPrev(h)"></div></div>
                   <div class="qc-panel"><div class="qc-plabel">Reply</div><div class="qc-text" x-text="schedReplyPrev(h)"></div></div>
                 </div>
-                <div class="qc-foot" style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;font-size:12px">
-                  <a x-show="h.posted_tweet_id && !String(h.posted_tweet_id).startsWith('posted_no_id_')" class="pc-link" :href="'https://x.com/i/status/'+String(h.posted_tweet_id).trim()" target="_blank" rel="noopener">Open reply ↗</a>
+                <div class="qc-foot" style="display:flex;flex-direction:column;gap:6px;font-size:12px">
+                  <div x-show="h.posted_tweet_id && String(h.posted_tweet_id).startsWith('posted_no_id_')" style="color:var(--am);font-weight:500">⚠️ Unconfirmed (Twitter may have rejected)</div>
+                  <div x-show="h.posted_tweet_id && !String(h.posted_tweet_id).startsWith('posted_no_id_')" style="color:var(--bl);font-weight:500">
+                    <a class="pc-link" :href="'https://x.com/i/status/'+String(h.posted_tweet_id).trim()" target="_blank" rel="noopener" style="color:var(--bl)">🚀 Posted → View tweet</a>
+                  </div>
                   <span x-show="h.posted_at" style="color:var(--t3)" x-text="'· '+(h.posted_at||'').replace('T',' ').slice(0,19)"></span>
                 </div>
               </div>
@@ -988,7 +993,7 @@ function app(){return{
   _profFilterDebounce:null,
 
   debugLogs:[],logFilter:'all',logAutoScroll:true,logLastUpdate:'—',_pollTimer:null,
-  schedRunning:false,schedPaused:false,schedDailyLimit:10,schedDelayMin:30,schedDelayMax:90,schedSentToday:0,schedNextAt:null,schedNextIn:null,schedCurrentTaskId:null,_schedPollTimer:null,_schedCountdownTimer:null,
+  schedRunning:false,schedPaused:false,schedPauseUntil:null,schedDailyLimit:10,schedDelayMin:30,schedDelayMax:90,schedSentToday:0,schedNextAt:null,schedNextIn:null,schedCurrentTaskId:null,_schedPollTimer:null,_schedCountdownTimer:null,
   postedHistory:[],postedHistoryOpen:false,
 
   conversations:[],totalReplies:0,convPage:1,convTotal:0,convDateFrom:'',convDateTo:'',
@@ -1432,6 +1437,7 @@ function app(){return{
     if(!r||r.error)return;
     this.schedRunning=!!r.running;
     this.schedPaused=!!r.paused;
+    this.schedPauseUntil=r.pause_until||null;
     if(typeof r.daily_limit==='number')this.schedDailyLimit=r.daily_limit;
     if(typeof r.sent_today==='number')this.schedSentToday=r.sent_today;
     this.schedNextAt=r.next_post_at||null;

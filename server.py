@@ -10,7 +10,7 @@ app=Flask(__name__,static_folder=str(Path(__file__).parent/'ui'),static_url_path
 CORS(app,methods=['GET','POST','PUT','PATCH','DELETE','OPTIONS'])
 PORT=int(os.environ.get('TW_PORT',7842))
 _SCHEDULER={
-    'running':False,'paused':False,'thread':None,'daily_limit':10,'sent_today':0,
+    'running':False,'paused':False,'pause_until':None,'thread':None,'daily_limit':10,'sent_today':0,
     'last_reset_date':'','next_post_at':None,'current_task_id':None,
     'delay_min':30,'delay_max':90,
     'lock':__import__('threading').Lock(),
@@ -1335,9 +1335,10 @@ def _post_one_reply_cf(cf_req, auth_token, ct0, in_reply_to_tweet_id, tweet_text
     try:
         ct = (data.get('data') or {}).get('create_tweet') or {}
         if 'tweet_results' in ct:
-            synthetic_id = f'posted_no_id_{int(time.time())}'
-            log('WARN', 'CreateTweet: tweet_results empty, marking as posted with synthetic ID')
-            return synthetic_id, None
+            # tweet_results exists but result/rest_id missing = silent reject by Twitter
+            # Do NOT mark as posted — this is NOT a successful publish
+            log('WARN', 'CreateTweet: tweet_results empty (silent reject). Task will be marked failed.')
+            return None, 'tweet_results_empty: Twitter silently rejected the tweet (account may be restricted)'
     except Exception:
         pass
     return None, (json.dumps(data)[:600] if data else 'empty response')
@@ -1389,6 +1390,7 @@ def _scheduler_status_dict():
             'status': st,
             'running': running,
             'paused': paused,
+            'pause_until': s.get('pause_until'),
             'daily_limit': int(s['daily_limit'] or 10),
             'sent_today': int(s['sent_today'] or 0),
             'next_post_at': s['next_post_at'],
@@ -1413,6 +1415,16 @@ def _scheduler_loop():
                     _SCHEDULER['next_post_at'] = None
                     _SCHEDULER['current_task_id'] = None
                     return
+                # Auto-resume after timed pause
+                pu = _SCHEDULER.get('pause_until')
+                if pu and _SCHEDULER['paused']:
+                    try:
+                        if datetime.utcnow() >= datetime.fromisoformat(pu.rstrip('Z')):
+                            _SCHEDULER['paused'] = False
+                            _SCHEDULER['pause_until'] = None
+                            log('INFO', 'scheduler: auto-resumed after timed pause')
+                    except Exception:
+                        pass
                 if _SCHEDULER['paused']:
                     paused = True
                 else:
@@ -1514,7 +1526,32 @@ def _scheduler_loop():
                     _SCHEDULER['sent_today'] = int(_SCHEDULER['sent_today'] or 0) + 1
             else:
                 _mark_reply_task_failed(tid, err or 'unknown error')
-                log('WARN', f'reply scheduler: failed task={tid[:8]}… {err}')
+                err_str = str(err or '')
+                log('WARN', f'scheduler: failed task err={err_str[:80]}')
+                # Error 226 = Twitter automation detection -> pause scheduler 2 hours
+                if '226' in err_str or 'automated' in err_str.lower() or 'looks like it might be automated' in err_str.lower():
+                    pause_until = (datetime.utcnow() + timedelta(hours=2)).isoformat() + 'Z'
+                    with _SCHEDULER['lock']:
+                        _SCHEDULER['paused'] = True
+                        _SCHEDULER['pause_until'] = pause_until
+                        _SCHEDULER['next_post_at'] = None
+                    log('WARN', f'scheduler: PAUSED for 2h due to error 226 (automation detection). Resume at {pause_until}')
+                    pt_snapshot = pause_until
+
+                    def _resume_after_226_pause():
+                        with _SCHEDULER['lock']:
+                            if _SCHEDULER.get('pause_until') != pt_snapshot:
+                                return
+                            _SCHEDULER['paused'] = False
+                            _SCHEDULER['pause_until'] = None
+                        log('INFO', 'scheduler: auto-resumed after timed pause')
+                        _scheduler_spawn_if_needed()
+
+                    threading.Timer(7200.0, _resume_after_226_pause).start()
+                    with _SCHEDULER['lock']:
+                        _SCHEDULER['next_post_at'] = None
+                        _SCHEDULER['current_task_id'] = None
+                    break
             with _SCHEDULER['lock']:
                 _SCHEDULER['next_post_at'] = None
                 _SCHEDULER['current_task_id'] = None
@@ -1670,6 +1707,7 @@ def scheduler_start():
         _SCHEDULER['delay_max'] = delay_max
         _SCHEDULER['running'] = True
         _SCHEDULER['paused'] = False
+        _SCHEDULER['pause_until'] = None
     _scheduler_spawn_if_needed()
     with _SCHEDULER['lock']:
         return jsonify({
@@ -1691,6 +1729,7 @@ def scheduler_pause():
 def scheduler_resume():
     with _SCHEDULER['lock']:
         _SCHEDULER['paused'] = False
+        _SCHEDULER['pause_until'] = None
     _scheduler_spawn_if_needed()
     with _SCHEDULER['lock']:
         return jsonify({
@@ -1704,6 +1743,7 @@ def scheduler_stop():
     with _SCHEDULER['lock']:
         _SCHEDULER['running'] = False
         _SCHEDULER['paused'] = False
+        _SCHEDULER['pause_until'] = None
         _SCHEDULER['next_post_at'] = None
     return jsonify({'status': 'success', 'running': False})
 
