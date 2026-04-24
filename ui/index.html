@@ -529,6 +529,18 @@ form.filter-panel{margin:0;display:block;}
                   <span style="font-size:11px;color:var(--t3)" x-text="'Random delay: '+schedDelayMin+'s – '+schedDelayMax+'s'"></span>
                 </div>
               </div>
+              <!-- Safety tips block -->
+              <div style="background:#FEF3C7;border-left:3px solid #F59E0B;border-radius:0 8px 8px 0;padding:12px 14px;margin-bottom:12px;font-size:12px;line-height:1.7;color:#78350F">
+                <div style="font-weight:700;margin-bottom:6px;color:#92400E">🛡️ How to stay safe from Twitter bans</div>
+                <ul style="margin:0 0 6px 16px;padding:0">
+                  <li><strong>Use realistic delays:</strong> 60–180 seconds between replies mimics human speed. Very short delays (under 30s) look automated.</li>
+                  <li><strong>Daily limit:</strong> Start with 5–10 replies/day on new accounts. Established accounts (3+ months, 100+ followers) can handle 20–30.</li>
+                  <li><strong>Vary your replies:</strong> AI-generated replies are already unique. Avoid sending very similar texts in the same session.</li>
+                  <li><strong>Error 226 = stop:</strong> If Twitter flags your session as automated, the queue auto-pauses for 2 hours. This is intentional — do not rush to restart.</li>
+                  <li><strong>Use GoLogin profiles:</strong> Posting from a GoLogin browser profile dramatically reduces ban risk by isolating each account's fingerprint.</li>
+                </ul>
+                <div style="font-size:11px;color:#92400E;opacity:.75">These limits apply per account. If you have multiple accounts, distribute the daily load between them.</div>
+              </div>
               <div style="display:flex;align-items:center;gap:8px;padding:10px 16px;background:var(--sf);border:1px solid var(--bd);border-radius:var(--r);margin-bottom:12px;flex-wrap:wrap">
                 <button type="button" class="btn btn-success btn-sm" x-show="!schedRunning" @click="schedStart()">▶ Start Sending</button>
                 <button type="button" class="btn btn-amber btn-sm" x-show="schedRunning&&!schedPaused" @click="schedPause()">⏸ Pause</button>
@@ -805,6 +817,25 @@ form.filter-panel{margin:0;display:block;}
                 <div style="font-size:13px;font-weight:600;color:var(--t1)">GoLogin Integration</div>
                 <button type="button" class="btn btn-outline btn-sm" @click="glOpen=!glOpen" x-text="glOpen?'Hide':'Show'"></button>
               </div>
+              <!-- GoLogin info block -->
+              <div style="background:var(--blb);border-left:3px solid var(--bl);border-radius:0 8px 8px 0;padding:12px 14px;margin-bottom:12px;font-size:12.5px;line-height:1.6;color:var(--t1)">
+                <div style="font-weight:700;margin-bottom:4px;color:var(--bl)">What is GoLogin? 🌐</div>
+                <p style="margin:0 0 6px">GoLogin is an anti-detect browser that creates isolated browser profiles — each with a unique fingerprint (IP, canvas, fonts, etc.). Twitter can't detect that multiple accounts come from the same device.</p>
+                <p style="margin:0 0 8px">Using GoLogin profiles is the <strong>safest way</strong> to connect Twitter accounts — it avoids automation flags and Error 226.</p>
+                <div style="display:flex;flex-wrap:wrap;gap:8px">
+                  <a href="https://gologin.com" target="_blank" rel="noopener" style="color:var(--bl);font-weight:600">→ Open GoLogin website</a>
+                  <span style="color:var(--t3)">·</span>
+                  <a href="https://app.gologin.com/api" target="_blank" rel="noopener" style="color:var(--bl)">→ Get API token</a>
+                </div>
+                <details style="margin-top:10px">
+                  <summary style="cursor:pointer;font-weight:600;color:var(--t2);font-size:12px">How to connect (3 steps)</summary>
+                  <ol style="margin:8px 0 0 18px;padding:0;font-size:12px;color:var(--t2);line-height:1.8">
+                    <li>Create a GoLogin account and add a browser profile with your Twitter account logged in</li>
+                    <li>Go to GoLogin → Settings → API and copy your API token</li>
+                    <li>Paste the token below → click Save → click Load Profiles → select your profile → Import</li>
+                  </ol>
+                </details>
+              </div>
               <div x-show="glOpen">
                 <div class="alert alert-info" style="font-size:12px;margin-bottom:10px">
                   Import Twitter accounts directly from your GoLogin profiles.
@@ -852,6 +883,24 @@ form.filter-panel{margin:0;display:block;}
           <div class="ss-head">🔑 GetX API</div>
           <div class="ss-body">
             <div class="alert alert-info" style="font-size:12px">Outreach search uses <a href="https://docs.getxapi.com/docs" target="_blank" rel="noopener">GetXAPI</a> (Bearer token). This is not your Twitter password.</div>
+            <!-- GetX info block -->
+            <div style="background:var(--blb);border-left:3px solid var(--bl);border-radius:0 8px 8px 0;padding:12px 14px;margin-bottom:10px;font-size:12.5px;line-height:1.6;color:var(--t1)">
+              <div style="font-weight:700;margin-bottom:4px;color:var(--bl)">What is GetX API? 🔍</div>
+              <p style="margin:0 0 6px">GetX is a Twitter data API that lets you search for tweets, profiles, and conversations at scale — much faster than manual browsing and without rate limits from the official Twitter API.</p>
+              <p style="margin:0 0 8px">This app uses GetX to find leads: people who are talking about topics relevant to your product.</p>
+              <div style="display:flex;flex-wrap:wrap;gap:8px">
+                <a href="https://getxapi.com" target="_blank" rel="noopener" style="color:var(--bl);font-weight:600">→ Open GetX website</a>
+                <span style="color:var(--t3)">·</span>
+                <a href="https://getxapi.com/dashboard" target="_blank" rel="noopener" style="color:var(--bl)">→ Get API key</a>
+              </div>
+              <details style="margin-top:10px">
+                <summary style="cursor:pointer;font-weight:600;color:var(--t2);font-size:12px">How to get the key (2 steps)</summary>
+                <ol style="margin:8px 0 0 18px;padding:0;font-size:12px;color:var(--t2);line-height:1.8">
+                  <li>Sign up on getxapi.com and choose a plan (there is a free tier)</li>
+                  <li>Copy your Bearer token from the dashboard and paste it in the field below</li>
+                </ol>
+              </details>
+            </div>
             <div class="fg">
               <label class="label" for="inp-getx-key">API key</label>
               <div style="display:flex;gap:8px;flex-wrap:wrap">
