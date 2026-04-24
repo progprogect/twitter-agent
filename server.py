@@ -845,6 +845,10 @@ def get_posts():
         except ValueError:pass
     lg=(request.args.get('lang') or '').strip()
     if lg:cl.append('lang=?');pl.append(lg)
+    raw=(request.args.get('post_q') or request.args.get('q') or '').strip().lower()
+    if raw:
+        cl.append("(instr(lower(coalesce(text,'') || ' ' || coalesce(url,'')), ?) > 0)")
+        pl.append(raw)
     w=('WHERE '+' AND '.join(cl)) if cl else ''
     order=request.args.get('order','DESC');so='DESC' if order.upper()=='DESC' else 'ASC'
     page=max(1,int(request.args.get('page',1)));ps=min(100,int(request.args.get('page_size',50)))
@@ -853,6 +857,30 @@ def get_posts():
     pl2=pl+[ps,offset]
     rows=conn.execute(f'SELECT * FROM posts {w} ORDER BY posted_at {so} LIMIT ? OFFSET ?',pl2).fetchall()
     conn.close();return jsonify({'posts':[dict(r) for r in rows],'total':total,'page':page,'status':'success'})
+
+@app.route('/api/posts/<pid>',methods=['DELETE'])
+def delete_post(pid):
+    conn=db()
+    row=conn.execute('SELECT id FROM posts WHERE id=?',(pid,)).fetchone()
+    if not row:
+        conn.close()
+        return jsonify({'status':'error','message':'Post not found'})
+    conn.execute('DELETE FROM posts WHERE id=?',(pid,))
+    conn.commit();conn.close()
+    log('INFO',f'Deleted post {pid[:12]}')
+    return jsonify({'status':'success','deleted':pid})
+
+@app.route('/api/profiles/<prid>',methods=['DELETE'])
+def delete_profile(prid):
+    conn=db()
+    row=conn.execute('SELECT id FROM profiles WHERE id=?',(prid,)).fetchone()
+    if not row:
+        conn.close()
+        return jsonify({'status':'error','message':'Profile not found'})
+    conn.execute('DELETE FROM profiles WHERE id=?',(prid,))
+    conn.commit();conn.close()
+    log('INFO',f'Deleted profile {prid[:12]}')
+    return jsonify({'status':'success','deleted':prid})
 
 @app.route('/api/dashboard/feed',methods=['GET'])
 def dashboard_feed():

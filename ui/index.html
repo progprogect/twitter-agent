@@ -368,6 +368,7 @@ form.filter-panel{margin:0;display:block;}
         <template x-if="outreachSub==='posts'">
         <div class="tbl-wrap outreach-pane">
           <form class="tbl-bar" style="flex-wrap:wrap;align-items:center" @submit.prevent="applyOutreachPosts()">
+            <input type="text" class="inp" style="width:180px" placeholder="Search in posts..." x-model="opTextQ" @input.debounce.400ms="applyOutreachPosts()">
             <input type="date" class="inp" style="width:auto;min-width:130px" x-model="opDateFrom" @change="applyOutreachPosts()">
             <span style="font-size:12px;color:var(--t3)">→</span>
             <input type="date" class="inp" style="width:auto;min-width:130px" x-model="opDateTo" @change="applyOutreachPosts()">
@@ -375,10 +376,11 @@ form.filter-panel{margin:0;display:block;}
             <input type="number" class="inp" style="width:88px" placeholder="Max" x-model="opMaxLikes" @change="applyOutreachPosts()">
             <input type="text" class="inp" style="width:72px" placeholder="lang" name="op_lang" x-model="opLang" @change="applyOutreachPosts()">
             <button type="submit" class="btn btn-outline btn-sm">Apply</button>
+            <button type="button" class="btn btn-outline btn-sm" @click="resetOutreachPosts()">Reset</button>
             <span class="tbl-count" x-text="opostsTotal+' posts'"></span>
           </form>
           <table x-show="oposts.length>0">
-            <thead><tr><th style="width:40px"></th><th>Text</th><th style="text-align:right">Likes</th><th>Lang</th><th>Posted</th></tr></thead>
+            <thead><tr><th style="width:40px"></th><th>Text</th><th style="text-align:right">Likes</th><th>Lang</th><th>Posted</th><th style="width:44px"></th></tr></thead>
             <tbody>
               <template x-for="p in oposts" :key="p.id">
                 <tr class="tbl-row">
@@ -387,6 +389,7 @@ form.filter-panel{margin:0;display:block;}
                   <td style="text-align:right" x-text="p.likes||0"></td>
                   <td x-text="p.lang||'—'"></td>
                   <td style="font-size:12px;color:var(--t3)" x-text="(p.posted_at||'').slice(0,16)"></td>
+                  <td style="vertical-align:middle;text-align:right"><button type="button" class="btn btn-danger btn-sm" style="padding:3px 8px" @click="deletePost(p)" title="Delete post">🗑</button></td>
                 </tr>
               </template>
             </tbody>
@@ -452,7 +455,7 @@ form.filter-panel{margin:0;display:block;}
             </div>
           </form>
           <table x-show="oprProfiles.length>0">
-            <thead><tr><th>Profile &amp; bio</th><th style="text-align:right;width:100px">Followers</th><th style="min-width:120px">Location</th><th style="width:88px">Blue</th></tr></thead>
+            <thead><tr><th>Profile &amp; bio</th><th style="text-align:right;width:100px">Followers</th><th style="min-width:120px">Location</th><th style="width:88px">Blue</th><th style="width:44px"></th></tr></thead>
             <tbody>
               <template x-for="p in oprProfiles" :key="p.id">
                 <tr class="tbl-row">
@@ -463,6 +466,7 @@ form.filter-panel{margin:0;display:block;}
                   <td style="text-align:right;font-weight:600;vertical-align:top;padding-top:14px" x-text="(p.followers_count||0).toLocaleString()"></td>
                   <td style="vertical-align:top;padding-top:14px;color:var(--t2)" x-text="p.location||'—'"></td>
                   <td style="vertical-align:top;padding-top:14px"><span class="badge bt2" x-show="p.is_blue_verified">Blue</span><span x-show="!p.is_blue_verified" style="color:var(--t3)">—</span></td>
+                  <td style="vertical-align:top;padding-top:14px;text-align:right"><button type="button" class="btn btn-danger btn-sm" style="padding:3px 8px" @click="deleteProfile(p)" title="Delete profile">🗑</button></td>
                 </tr>
               </template>
             </tbody>
@@ -884,6 +888,7 @@ function app(){return{
   genModal:{open:false,intent:'helpful and curious, add genuine value'},
 
   oposts:[],opostsTotal:0,opage:1,
+  opTextQ:'',
   opDateFrom:'',opDateTo:'',opMinLikes:'',opMaxLikes:'',opLang:'',
 
   oprProfiles:[],oprTotal:0,prpage:1,
@@ -1008,6 +1013,7 @@ function app(){return{
     const nmin=Number(this.opMinLikes);if(this.opMinLikes!==''&&this.opMinLikes!=null&&!Number.isNaN(nmin))q+='&min_likes='+encodeURIComponent(String(nmin));
     const nmax=Number(this.opMaxLikes);if(this.opMaxLikes!==''&&this.opMaxLikes!=null&&!Number.isNaN(nmax))q+='&max_likes='+encodeURIComponent(String(nmax));
     const lg=(this.opLang||'').trim();if(lg)q+='&lang='+encodeURIComponent(lg);
+    const tq=(this.opTextQ||'').trim();if(tq)q+='&post_q='+encodeURIComponent(tq);
     const r=await this.api(q);
     if(Array.isArray(r.posts)){this.oposts=r.posts;this.opostsTotal=typeof r.total==='number'?r.total:r.posts.length;}
   },
@@ -1015,6 +1021,39 @@ function app(){return{
   applyOutreachPosts(){
     this.opage=1;
     this.loadOutreachPosts();
+  },
+
+  resetOutreachPosts(){
+    this.opTextQ='';
+    this.opDateFrom='';
+    this.opDateTo='';
+    this.opMinLikes='';
+    this.opMaxLikes='';
+    this.opLang='';
+    this.opage=1;
+    this.loadOutreachPosts();
+  },
+
+  async deletePost(post){
+    if(!confirm('Delete this post? This cannot be undone.'))return;
+    const r=await this.api(`/api/posts/${post.id}`,'DELETE');
+    if(r.status==='success'){
+      this.showToast('Post deleted','🗑');
+      await this.loadOutreachPosts();
+    }else{
+      this.showToast('Delete failed: '+(r.message||''),'❌');
+    }
+  },
+
+  async deleteProfile(profile){
+    if(!confirm('Delete @'+profile.username+'? This also removes their posts.'))return;
+    const r=await this.api(`/api/profiles/${profile.id}`,'DELETE');
+    if(r.status==='success'){
+      this.showToast('Profile deleted','🗑');
+      await this.loadOutreachProfiles();
+    }else{
+      this.showToast('Delete failed: '+(r.message||''),'❌');
+    }
   },
 
   applyOutreachProfiles(){
@@ -1109,7 +1148,8 @@ function app(){return{
 
   async api(path,method='GET',body=null){
     try{
-      const o={method,headers:{'Content-Type':'application/json'}};if(body)o.body=JSON.stringify(body);
+      const m=(method||'GET').toUpperCase();
+      const o={method:m,headers:{}};if(body!=null&&m!=='GET'&&m!=='HEAD'){o.headers['Content-Type']='application/json';o.body=JSON.stringify(body);}
       const res=await fetch(path,o);const text=await res.text();
       const ct=(res.headers.get('content-type')||'').toLowerCase();
       const looksJson=/^\s*[\[{]/.test(text);
