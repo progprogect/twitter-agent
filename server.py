@@ -12,6 +12,7 @@ PORT=int(os.environ.get('TW_PORT',7842))
 _SCHEDULER={
     'running':False,'paused':False,'thread':None,'daily_limit':10,'sent_today':0,
     'last_reset_date':'','next_post_at':None,'current_task_id':None,
+    'delay_min':30,'delay_max':90,
     'lock':__import__('threading').Lock(),
 }
 DB_PATH=os.environ.get('TW_DB_PATH',str(Path.home()/'Documents'/'twitter_agent'/'data.db'))
@@ -941,11 +942,13 @@ def get_tasks():
     w,pl=_reply_task_filters(include_status=True)
     page=max(1,int(request.args.get('page',1)))
     ps=min(50,int(request.args.get('page_size',20)))
+    st_raw=(request.args.get('status') or 'pending').strip().lower()
+    order_sql='rt.created_at ASC' if st_raw=='approved' else 'rt.created_at DESC'
     conn=db()
     total=conn.execute(f'SELECT COUNT(*) FROM reply_tasks rt LEFT JOIN posts p ON rt.post_id=p.id {w}',pl).fetchone()[0]
     pl2=pl+[ps,(page-1)*ps]
     rows=conn.execute(
-        f'SELECT rt.*,COALESCE(rt.edited_reply,rt.generated_reply) as final_reply,p.text AS post_text,p.url AS post_url,pr.username AS profile_username,a.username AS account_username FROM reply_tasks rt LEFT JOIN posts p ON rt.post_id=p.id LEFT JOIN profiles pr ON rt.profile_id=pr.id LEFT JOIN accounts a ON rt.account_id=a.id {w} ORDER BY rt.created_at DESC LIMIT ? OFFSET ?',
+        f'SELECT rt.*,COALESCE(rt.edited_reply,rt.generated_reply) as final_reply,p.text AS post_text,p.url AS post_url,pr.username AS profile_username,a.username AS account_username FROM reply_tasks rt LEFT JOIN posts p ON rt.post_id=p.id LEFT JOIN profiles pr ON rt.profile_id=pr.id LEFT JOIN accounts a ON rt.account_id=a.id {w} ORDER BY {order_sql} LIMIT ? OFFSET ?',
         pl2,
     ).fetchall()
     conn.close();return jsonify({'tasks':[dict(r) for r in rows],'total':total,'page':page,'count':len(rows),'status':'success'})
@@ -1390,6 +1393,8 @@ def _scheduler_status_dict():
             'sent_today': int(s['sent_today'] or 0),
             'next_post_at': s['next_post_at'],
             'current_task_id': s['current_task_id'],
+            'delay_min': int(s.get('delay_min') or 30),
+            'delay_max': int(s.get('delay_max') or 90),
         }
 
 def _scheduler_reset_day_locked():
@@ -1438,7 +1443,12 @@ def _scheduler_loop():
             tid = row['task_id']
             tweet_id = _tweet_id_for_reply(row['post_url'], row['post_id'])
             text = (row['reply_text'] or '').strip()
-            delay = random.uniform(20, 30)
+            with _SCHEDULER['lock']:
+                dmin = float(_SCHEDULER.get('delay_min') or 30)
+                dmax = float(_SCHEDULER.get('delay_max') or 90)
+            if dmax < dmin:
+                dmax = dmin + 5
+            delay = random.uniform(dmin, dmax)
             next_iso = (datetime.utcnow() + timedelta(seconds=delay)).isoformat() + 'Z'
             with _SCHEDULER['lock']:
                 if not _SCHEDULER['running'] or _SCHEDULER['paused']:
@@ -1644,7 +1654,20 @@ def scheduler_start():
         dl = 10
     dl = max(1, min(100, dl))
     with _SCHEDULER['lock']:
+        def_dm = int(_SCHEDULER.get('delay_min') or 30)
+        def_dM = int(_SCHEDULER.get('delay_max') or 90)
+    try:
+        delay_min = max(10, int(body.get('delay_min', def_dm)))
+    except (TypeError, ValueError):
+        delay_min = max(10, def_dm)
+    try:
+        delay_max = max(delay_min + 5, int(body.get('delay_max', def_dM)))
+    except (TypeError, ValueError):
+        delay_max = max(delay_min + 5, def_dM)
+    with _SCHEDULER['lock']:
         _SCHEDULER['daily_limit'] = dl
+        _SCHEDULER['delay_min'] = delay_min
+        _SCHEDULER['delay_max'] = delay_max
         _SCHEDULER['running'] = True
         _SCHEDULER['paused'] = False
     _scheduler_spawn_if_needed()
@@ -1653,6 +1676,8 @@ def scheduler_start():
             'status': 'success',
             'running': bool(_SCHEDULER['running']),
             'daily_limit': int(_SCHEDULER['daily_limit']),
+            'delay_min': int(_SCHEDULER['delay_min']),
+            'delay_max': int(_SCHEDULER['delay_max']),
         })
 
 @app.route('/api/scheduler/pause', methods=['POST'])
@@ -1740,6 +1765,32 @@ def scheduler_set_limit():
     with _SCHEDULER['lock']:
         _SCHEDULER['daily_limit'] = dl
     return jsonify({'status': 'success', 'daily_limit': dl})
+
+@app.route('/api/scheduler/update_settings', methods=['POST'])
+def scheduler_update_settings():
+    b = request.json or {}
+    with _SCHEDULER['lock']:
+        if 'delay_min' in b:
+            try:
+                _SCHEDULER['delay_min'] = max(10, int(b['delay_min']))
+            except (TypeError, ValueError):
+                pass
+        if 'delay_max' in b:
+            try:
+                _SCHEDULER['delay_max'] = max(int(_SCHEDULER['delay_min']) + 5, int(b['delay_max']))
+            except (TypeError, ValueError):
+                pass
+        if 'daily_limit' in b:
+            try:
+                _SCHEDULER['daily_limit'] = max(1, min(int(b['daily_limit']), 100))
+            except (TypeError, ValueError):
+                pass
+        return jsonify({
+            'status': 'success',
+            'delay_min': int(_SCHEDULER['delay_min']),
+            'delay_max': int(_SCHEDULER['delay_max']),
+            'daily_limit': int(_SCHEDULER['daily_limit']),
+        })
 
 @app.route('/api/run/monitor',methods=['POST'])
 def run_monitor():return jsonify(run_expert('tw_monitor',{'action':'check'}))

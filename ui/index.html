@@ -146,8 +146,8 @@ form.filter-panel{margin:0;display:block;}
 .qc{background:var(--sf);border:1px solid var(--bd);border-radius:var(--r);box-shadow:var(--sh);margin-bottom:10px;transition:box-shadow var(--tr);}
 .qc:hover{box-shadow:var(--shm);}
 .qc-head{padding:10px 14px;background:var(--sf2);border-bottom:1px solid var(--bd);display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
-.qc-post-cb{display:flex;align-items:center;margin-right:2px;cursor:pointer;}
-.qc-post-cb input{width:16px;height:16px;cursor:pointer;accent-color:var(--bl);}
+.qc-sending{box-shadow:0 0 0 2px var(--gn);border-radius:var(--r);}
+.qc-sched-meta{font-size:11.5px;color:var(--t2);line-height:1.4;margin-top:6px}
 .qc-pname{font-size:13.5px;font-weight:700;}.qc-via{font-size:11.5px;color:var(--t3);}
 .qc-body{display:grid;grid-template-columns:1fr 1fr;}
 .qc-panel{padding:14px 16px;}.qc-panel+.qc-panel{border-left:1px solid var(--bd);}
@@ -495,30 +495,39 @@ form.filter-panel{margin:0;display:block;}
           <button type="button" class="queue-subtab" :class="{'active':queueView==='schedule'}" @click="queueView='schedule';tF='approved';taskPage=1;loadTasks();loadSchedulerStatus()">📤 Schedule<span x-show="taskCounts.approved>0" class="qtab-cnt" style="margin-left:6px" x-text="taskCounts.approved"></span></button>
         </div>
         <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:14px">
-          <div class="sched-panel" x-show="queueView==='schedule'">
-            <div class="sched-head">
-              <span class="sched-title">Posting Schedule</span>
-              <span class="dot" :class="schedRunning&&!schedPaused?'dot-gn':(schedRunning&&schedPaused?'dot-yl':'dot-gy')"></span>
-              <span style="font-size:12.5px;font-weight:600;color:var(--t1)" x-text="schedRunning&&!schedPaused?'Running':(schedRunning&&schedPaused?'Paused':'Idle')"></span>
+          <template x-if="queueView==='schedule'">
+            <div>
+              <div class="sched-settings-card" style="background:var(--sf);border:1px solid var(--bd);border-radius:var(--r);padding:16px 20px;margin-bottom:12px">
+                <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--t3);margin-bottom:12px">Queue Settings</div>
+                <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                  <div style="display:flex;align-items:center;gap:6px">
+                    <label style="font-size:12px;color:var(--t2)">Delay (sec):</label>
+                    <input type="number" class="inp" style="width:58px" min="10" max="3600" x-model.number="schedDelayMin" name="sched_delay_min" placeholder="30">
+                    <span style="color:var(--t3)">–</span>
+                    <input type="number" class="inp" style="width:58px" min="15" max="3600" x-model.number="schedDelayMax" name="sched_delay_max" placeholder="90">
+                  </div>
+                  <div style="display:flex;align-items:center;gap:6px">
+                    <label style="font-size:12px;color:var(--t2)">Daily limit:</label>
+                    <input type="number" class="inp" style="width:58px" min="1" max="100" x-model.number="schedDailyLimit" name="sched_daily_limit">
+                  </div>
+                  <button type="button" class="btn btn-outline btn-sm" @click="schedSaveSettings()">Save</button>
+                  <span style="font-size:11px;color:var(--t3)" x-text="'Random delay: '+schedDelayMin+'s – '+schedDelayMax+'s'"></span>
+                </div>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;padding:10px 16px;background:var(--sf);border:1px solid var(--bd);border-radius:var(--r);margin-bottom:12px;flex-wrap:wrap">
+                <button type="button" class="btn btn-success btn-sm" x-show="!schedRunning" @click="schedStart()">▶ Start Sending</button>
+                <button type="button" class="btn btn-amber btn-sm" x-show="schedRunning&&!schedPaused" @click="schedPause()">⏸ Pause</button>
+                <button type="button" class="btn btn-success btn-sm" x-show="schedRunning&&schedPaused" @click="schedResume()">▶ Resume</button>
+                <button type="button" class="btn btn-danger btn-sm" x-show="schedRunning" @click="schedStop()">⏹ Stop</button>
+                <div style="display:flex;align-items:center;gap:6px;font-size:12px;margin-left:4px">
+                  <span class="dot" :class="schedRunning&&!schedPaused?'dot-gn':(schedPaused?'dot-am':'dot-gy')"></span>
+                  <span style="color:var(--t2)" x-text="schedRunning&&!schedPaused?'Sending':(schedPaused?'Paused':'Idle')"></span>
+                </div>
+                <span x-show="schedRunning&&!schedPaused&&schedNextIn!==null" style="font-size:12px;color:var(--t2)" x-text="'Next in '+schedNextIn+'s'"></span>
+                <span style="font-size:12px;color:var(--t3);margin-left:auto" x-text="schedSentToday+' / '+schedDailyLimit+' sent today'"></span>
+              </div>
             </div>
-            <div class="sched-row">
-              <span x-show="schedRunning&&!schedPaused&&schedNextIn!==null">Next post in <strong x-text="schedNextIn"></strong>s</span>
-              <span x-show="!(schedRunning&&!schedPaused&&schedNextIn!==null)" style="color:var(--t3)">—</span>
-              <span style="margin-left:auto;color:var(--t3)">Today:</span>
-              <strong x-text="schedSentToday"></strong><span style="color:var(--t3)"> / </span><strong x-text="schedDailyLimit"></strong><span style="color:var(--t3)"> sent</span>
-            </div>
-            <div class="sched-actions">
-              <button type="button" class="btn btn-primary btn-sm" x-show="!schedRunning" @click="schedStart()">Start Queue</button>
-              <button type="button" class="btn btn-outline btn-sm" x-show="schedRunning&&!schedPaused" @click="schedPause()">Pause</button>
-              <button type="button" class="btn btn-primary btn-sm" x-show="schedRunning&&schedPaused" @click="schedResume()">Resume</button>
-              <button type="button" class="btn btn-danger btn-sm" x-show="schedRunning" @click="schedStop()">Stop</button>
-              <span class="sched-limit">
-                <label for="sched-daily-limit" style="color:var(--t3)">Daily limit</label>
-                <input id="sched-daily-limit" name="sched_daily_limit" type="number" class="inp" style="width:64px;padding:6px 8px" min="1" max="100" x-model.number="schedDailyLimit" @change="schedSetLimit()">
-              </span>
-            </div>
-            <div class="sched-hint">Random 20–30s between posts when the queue is running.</div>
-          </div>
+          </template>
           <div class="queue-tabs">
             <button type="button" class="qtab" x-show="queueView==='review'" :class="{'active':tF==='all'}" @click="tF='all';taskPage=1;loadTasks()">All<span class="qtab-cnt" x-text="taskCounts.all"></span></button>
             <button type="button" class="qtab" x-show="queueView==='review'" :class="{'active':tF==='pending'}" @click="tF='pending';taskPage=1;loadTasks()">Pending<span class="qtab-cnt" x-text="taskCounts.pending"></span></button>
@@ -533,24 +542,29 @@ form.filter-panel{margin:0;display:block;}
             <input type="date" class="inp" name="task_date_to" style="width:auto;min-width:130px" x-model="taskDateTo" @change="taskPage=1;loadTasks()">
           </div>
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-            <button x-show="queueView==='schedule'&&tF==='approved'&&tasks.length>0" class="btn btn-primary btn-sm" @click="postAll()">🚀 Post All</button>
-            <button x-show="queueView==='schedule'&&tF==='approved'&&tasks.length>0" class="btn btn-outline btn-sm" @click="postSelectedReplies()">Post Selected</button>
             <button x-show="queueView==='review'&&tF==='pending'&&tasks.length>0" class="btn btn-success btn-sm" @click="bulkApprove()">✓ Approve All</button>
             <button class="btn btn-outline btn-sm" @click="runMonitor()" title="Check for replies to posted tweets">📡 Monitor</button>
             <span style="font-size:11.5px;color:var(--t3);margin-left:auto" x-text="(taskTotal||0)+' tasks'"></span>
           </div>
         </div>
         <div x-show="tasks.length===0" class="empty"><div class="empty-icon" x-text="tF==='pending'?'⏳':tF==='posted'?'🚀':tF==='all'?'📭':'📭'"></div><div class="empty-h" x-text="tF==='all'?'No tasks':'No '+tF+' tasks'"></div></div>
-        <template x-for="t in tasks" :key="t.id">
-          <div class="qc">
+        <template x-for="(t,idx) in tasks" :key="t.id">
+          <div class="qc" :class="{'qc-sending':queueView==='schedule'&&tF==='approved'&&t.status==='approved'&&schedRunning&&!schedPaused&&schedCurrentTaskId===t.id}">
             <div class="qc-head">
-              <label x-show="t.status==='approved'" class="qc-post-cb" :title="'Queue this reply for posting'">
-                <input type="checkbox" name="post_sel" :checked="postReplySel.includes(t.id)" @change="togglePostReplySel(t.id,$event.target.checked)">
-              </label>
+              <span x-show="queueView==='schedule'&&tF==='approved'&&t.status==='approved'" style="font-size:12px;font-weight:700;color:var(--t3);min-width:2.2em" x-text="'#'+((taskPage-1)*20+idx+1)"></span>
               <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0"><span class="qc-pname">@<span x-text="t.profile_username||'?'"></span></span><span x-show="t.account_username" class="qc-via">via @<span x-text="t.account_username||''"></span></span></div>
-              <span :class="'badge '+(t.status==='pending'?'bp':t.status==='approved'?'ba':t.status==='rejected'?'br':t.status==='posted'?'bpo':'bf')" x-text="t.status"></span>
+              <template x-if="queueView==='schedule'&&tF==='approved'&&t.status==='approved'">
+                <span class="badge" :class="schedRunning&&!schedPaused&&schedCurrentTaskId===t.id?'ba':'bp'" x-text="schedRunning&&!schedPaused&&schedCurrentTaskId===t.id?'▶ Sending':'⏳ Queued'"></span>
+              </template>
+              <template x-if="!(queueView==='schedule'&&tF==='approved'&&t.status==='approved')">
+                <span :class="'badge '+(t.status==='pending'?'bp':t.status==='approved'?'ba':t.status==='rejected'?'br':t.status==='posted'?'bpo':'bf')" x-text="t.status"></span>
+              </template>
             </div>
-            <div class="qc-body">
+            <div class="qc-sched-meta" x-show="queueView==='schedule'&&tF==='approved'&&t.status==='approved'">
+              <div><span style="color:var(--t3)">Reply: </span><span x-text="schedReplyPrev(t)"></span></div>
+              <div><span style="color:var(--t3)">Tweet: </span><span x-text="schedTweetPrev(t)"></span></div>
+            </div>
+            <div class="qc-body" x-show="!(queueView==='schedule'&&tF==='approved')">
               <div class="qc-panel"><div class="qc-plabel">Original Tweet</div><div class="qc-text dim" x-text="t.post_text||'—'"></div></div>
               <div class="qc-panel">
                 <div class="qc-plabel">Reply</div>
@@ -571,8 +585,8 @@ form.filter-panel{margin:0;display:block;}
                 <button class="btn btn-danger btn-sm" @click="reject(t)">✕ Reject</button>
               </div>
               <div x-show="t.status==='approved'" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-                <span style="font-size:12px;color:var(--gn);font-weight:500">✓ Approved</span>
-                <button type="button" class="btn btn-outline btn-sm" :disabled="t._posting" @click="postNow(t)">Now</button>
+                <button type="button" class="btn btn-outline btn-sm" :disabled="t._posting" @click="postNow(t)">▶ Now</button>
+                <button type="button" class="btn btn-danger btn-sm" @click="reject(t)">🗑 Remove</button>
               </div>
               <div x-show="t.status==='posted'" style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;font-size:12px;color:var(--bl);font-weight:500">
                 <span>🚀 Posted</span>
@@ -583,6 +597,28 @@ form.filter-panel{margin:0;display:block;}
             </div>
           </div>
         </template>
+        <div x-show="queueView==='schedule'&&tF==='approved'" style="margin-top:8px">
+          <button type="button" class="btn btn-outline btn-sm" @click="postedHistoryOpen=!postedHistoryOpen; if(postedHistoryOpen) loadPostedHistory()" x-text="postedHistoryOpen?'▾ Hide posted history':'▸ Recent posted (10)'"></button>
+          <div x-show="postedHistoryOpen" style="margin-top:10px">
+            <div x-show="postedHistory.length===0" class="empty" style="padding:16px"><div class="empty-h" style="font-size:13px">No posted tasks yet</div></div>
+            <template x-for="h in postedHistory" :key="h.id">
+              <div class="qc" style="margin-bottom:8px;opacity:.92">
+                <div class="qc-head">
+                  <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0"><span class="qc-pname">@<span x-text="h.profile_username||'?'"></span></span></div>
+                  <span class="badge bpo">✅ Done</span>
+                </div>
+                <div class="qc-body">
+                  <div class="qc-panel"><div class="qc-plabel">Original Tweet</div><div class="qc-text dim" x-text="schedTweetPrev(h)"></div></div>
+                  <div class="qc-panel"><div class="qc-plabel">Reply</div><div class="qc-text" x-text="schedReplyPrev(h)"></div></div>
+                </div>
+                <div class="qc-foot" style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;font-size:12px">
+                  <a x-show="h.posted_tweet_id && !String(h.posted_tweet_id).startsWith('posted_no_id_')" class="pc-link" :href="'https://x.com/i/status/'+String(h.posted_tweet_id).trim()" target="_blank" rel="noopener">Open reply ↗</a>
+                  <span x-show="h.posted_at" style="color:var(--t3)" x-text="'· '+(h.posted_at||'').replace('T',' ').slice(0,19)"></span>
+                </div>
+              </div>
+            </template>
+          </div>
+        </div>
         <div class="pg-bar" x-show="taskTotal>20">
           <button type="button" class="pg-btn" @click="taskPage=1;loadTasks()" :disabled="taskPage<=1">&laquo;</button>
           <button type="button" class="pg-btn" @click="taskPage=Math.max(1,taskPage-1);loadTasks()" :disabled="taskPage<=1">&lsaquo;</button>
@@ -909,8 +945,8 @@ function app(){return{
   _profFilterDebounce:null,
 
   debugLogs:[],logFilter:'all',logAutoScroll:true,logLastUpdate:'—',_pollTimer:null,
-  postReplySel:[],_afterPostPoll:null,_afterPostPollN:0,
-  schedRunning:false,schedPaused:false,schedDailyLimit:10,schedSentToday:0,schedNextAt:null,schedNextIn:null,_schedPollTimer:null,_schedCountdownTimer:null,
+  schedRunning:false,schedPaused:false,schedDailyLimit:10,schedDelayMin:30,schedDelayMax:90,schedSentToday:0,schedNextAt:null,schedNextIn:null,schedCurrentTaskId:null,_schedPollTimer:null,_schedCountdownTimer:null,
+  postedHistory:[],postedHistoryOpen:false,
 
   conversations:[],totalReplies:0,convPage:1,convTotal:0,convDateFrom:'',convDateTo:'',
   convLastChecked:null,convChecking:false,
@@ -1205,6 +1241,22 @@ function app(){return{
       this.taskCounts={all:0,pending:0,approved:0,posted:0,rejected:0,...c.counts};
       this.pendingCount=+this.taskCounts.pending||0;
     }
+    if(this.queueView==='schedule'&&this.tF==='approved')await this.loadPostedHistory();
+  },
+  schedReplyPrev(t){
+    const s=(t&&(t.final_reply||t.generated_reply))||'';
+    if(!s)return '—';
+    return s.length>80?s.slice(0,80)+'…':s;
+  },
+  schedTweetPrev(t){
+    const s=(t&&t.post_text)||'';
+    if(!s)return '—';
+    return s.length>80?s.slice(0,80)+'…':s;
+  },
+  async loadPostedHistory(){
+    const listUrl='/api/tasks?account_id='+encodeURIComponent(this.acct||'')+'&status=posted&page=1&page_size=10';
+    const r=await this.api(listUrl);
+    this.postedHistory=Array.isArray(r.tasks)?r.tasks:[];
   },
   async loadAnalytics(){const r=await this.api('/api/analytics');if(r.timeline)this.analytics=r.timeline;if(r.summary)this.stats=r.summary;},
   clearConvDates(){
@@ -1317,30 +1369,6 @@ function app(){return{
     if(r.status==='success'){t._ed=false;t.final_reply=t._txt;this.showToast('Saved ✅','💾');}
   },
   async bulkApprove(){const ids=this.tasks.filter(t=>t.status==='pending').map(t=>t.id);if(!ids.length)return;await this.api('/api/tasks/bulk','POST',{action:'approve',task_ids:ids});this.showToast('All '+ids.length+' approved ✅','✅');await this.loadTasks();},
-  togglePostReplySel(id,on){
-    if(on){if(!this.postReplySel.includes(id))this.postReplySel=[...this.postReplySel,id];}
-    else{this.postReplySel=this.postReplySel.filter(x=>x!==id);}
-  },
-  startAfterPostPolling(){
-    if(this._afterPostPoll){clearInterval(this._afterPostPoll);this._afterPostPoll=null;}
-    this._afterPostPollN=0;
-    this._afterPostPoll=setInterval(async()=>{
-      this._afterPostPollN++;
-      await this.loadTasks();
-      if(this._afterPostPollN>=24){clearInterval(this._afterPostPoll);this._afterPostPoll=null;}
-    },5000);
-  },
-  async postAll(){
-    const r=await this.api('/api/run/post_replies','POST',{});
-    if(r.status==='queued'&&r.count>0){
-      this.showToast(`Posting ${r.count} ${r.count===1?'reply':'replies'} in background (20s delay between posts)`,'🚀');
-      this.startAfterPostPolling();
-    }else if(r.status==='queued'&&(!r.count||r.count===0)){
-      this.showToast(r.message||'Nothing to post','⚠️');
-    }else{
-      this.showToast((r.message||r.error||'Could not queue posting'),'❌');
-    }
-  },
   async loadSchedulerStatus(){
     const r=await this.api('/api/scheduler/status');
     if(!r||r.error)return;
@@ -1349,6 +1377,9 @@ function app(){return{
     if(typeof r.daily_limit==='number')this.schedDailyLimit=r.daily_limit;
     if(typeof r.sent_today==='number')this.schedSentToday=r.sent_today;
     this.schedNextAt=r.next_post_at||null;
+    this.schedDelayMin=typeof r.delay_min==='number'?r.delay_min:30;
+    this.schedDelayMax=typeof r.delay_max==='number'?r.delay_max:90;
+    this.schedCurrentTaskId=r.current_task_id||null;
     this.schedComputeCountdown();
     if(this.tab==='queue'&&!this.schedRunning)this.stopSchedPoll();
   },
@@ -1370,17 +1401,42 @@ function app(){return{
   },
   async schedStart(){
     const lim=Math.min(100,Math.max(1,parseInt(String(this.schedDailyLimit),10)||10));
+    const dmin=Math.max(10,parseInt(String(this.schedDelayMin),10)||30);
+    let dmax=Math.max(dmin+5,parseInt(String(this.schedDelayMax),10)||90);
     this.schedDailyLimit=lim;
-    const r=await this.api('/api/scheduler/start','POST',{daily_limit:lim});
+    this.schedDelayMin=dmin;
+    this.schedDelayMax=dmax;
+    const r=await this.api('/api/scheduler/start','POST',{daily_limit:lim,delay_min:dmin,delay_max:dmax});
     if(r.status==='success'){
       this.schedRunning=!!r.running;
       this.schedPaused=false;
       if(typeof r.daily_limit==='number')this.schedDailyLimit=r.daily_limit;
-      this.showToast('Queue started','▶️');
+      if(typeof r.delay_min==='number')this.schedDelayMin=r.delay_min;
+      if(typeof r.delay_max==='number')this.schedDelayMax=r.delay_max;
+      this.showToast('Sending started','▶️');
       await this.loadSchedulerStatus();
       this.startSchedPoll();
     }else{
       this.showToast(r.error||r.message||'Could not start','❌');
+    }
+  },
+  async schedSaveSettings(){
+    const dmin=Math.max(10,parseInt(String(this.schedDelayMin),10)||30);
+    let dmax=Math.max(dmin+5,parseInt(String(this.schedDelayMax),10)||90);
+    this.schedDelayMin=dmin;
+    this.schedDelayMax=dmax;
+    const r=await this.api('/api/scheduler/update_settings','POST',{
+      delay_min:dmin,
+      delay_max:dmax,
+      daily_limit:Math.min(100,Math.max(1,parseInt(String(this.schedDailyLimit),10)||10)),
+    });
+    if(r&&r.status==='success'){
+      if(typeof r.daily_limit==='number')this.schedDailyLimit=r.daily_limit;
+      if(typeof r.delay_min==='number')this.schedDelayMin=r.delay_min;
+      if(typeof r.delay_max==='number')this.schedDelayMax=r.delay_max;
+      this.showToast('Settings saved','✅');
+    }else{
+      this.showToast((r&&r.error)||'Save failed','❌');
     }
   },
   async schedPause(){
@@ -1414,12 +1470,6 @@ function app(){return{
       this.showToast('Queue stopped','⏹');
     }
   },
-  async schedSetLimit(){
-    const lim=Math.min(100,Math.max(1,parseInt(String(this.schedDailyLimit),10)||10));
-    this.schedDailyLimit=lim;
-    await this.api('/api/scheduler/set_limit','POST',{daily_limit:lim});
-    await this.loadSchedulerStatus();
-  },
   async postNow(t){
     t._posting=true;
     const r=await this.api('/api/scheduler/post_now','POST',{task_id:t.id});
@@ -1430,21 +1480,6 @@ function app(){return{
       await this.loadSchedulerStatus();
     }else{
       this.showToast(r.error||r.message||'Post failed','❌');
-    }
-  },
-  async postSelectedReplies(){
-    const ok=new Set(this.tasks.filter(t=>t.status==='approved').map(t=>t.id));
-    const sel=this.postReplySel.filter(id=>ok.has(id));
-    if(!sel.length){this.showToast('Select approved tasks with the checkboxes','⚠️');return;}
-    const r=await this.api('/api/run/post_replies','POST',{task_ids:sel});
-    if(r.status==='queued'&&r.count>0){
-      this.showToast(`Posting ${r.count} ${r.count===1?'reply':'replies'} in background (20s delay between posts)`,'🚀');
-      this.postReplySel=this.postReplySel.filter(id=>!sel.includes(id));
-      this.startAfterPostPolling();
-    }else if(r.status==='queued'&&(!r.count||r.count===0)){
-      this.showToast(r.message||'Nothing to post','⚠️');
-    }else{
-      this.showToast((r.message||r.error||'Could not queue posting'),'❌');
     }
   },
   async saveSetting(k,v){await this.api('/api/settings','PATCH',{[k]:v});this.showToast('Saved','💾');},
