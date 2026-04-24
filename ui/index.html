@@ -692,6 +692,53 @@ form.filter-panel{margin:0;display:block;}
                 </div>
               </div>
             </div>
+            <!-- GoLogin Integration -->
+            <div style="margin-top:16px;border-top:1px solid var(--bd);padding-top:14px">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+                <div style="font-size:13px;font-weight:600;color:var(--t1)">GoLogin Integration</div>
+                <button type="button" class="btn btn-outline btn-sm" @click="glOpen=!glOpen" x-text="glOpen?'Hide':'Show'"></button>
+              </div>
+              <div x-show="glOpen">
+                <div class="alert alert-info" style="font-size:12px;margin-bottom:10px">
+                  Import Twitter accounts directly from your GoLogin profiles.
+                  The profile must have Twitter logged in inside GoLogin.
+                </div>
+                <div class="fg">
+                  <label class="label" for="inp-gologin-token">GoLogin API Token</label>
+                  <div style="display:flex;gap:8px">
+                    <input id="inp-gologin-token" type="password" name="gologin_api_token" class="inp" x-model="glToken"
+                           :placeholder="cfg.gologin_api_token?'•••••••• saved':'Paste GoLogin API token'">
+                    <button type="button" class="btn btn-outline" @click="saveGlToken()">Save</button>
+                  </div>
+                  <p style="font-size:11px;color:var(--t3);margin-top:4px">Find your token in GoLogin → Settings → API</p>
+                </div>
+                <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
+                  <button type="button" class="btn btn-outline" @click="loadGlProfiles()" :disabled="glLoading">
+                    <span x-show="!glLoading">🔄 Load Profiles</span>
+                    <span x-show="glLoading">Loading...</span>
+                  </button>
+                  <span x-show="glProfiles.length>0" style="font-size:12px;color:var(--t3)" x-text="glProfiles.length+' profiles found'"></span>
+                </div>
+                <div x-show="glProfiles.length>0">
+                  <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap">
+                    <select id="sel-gologin-profile" class="sel" style="flex:1;min-width:180px" x-model="glSelectedId" aria-label="GoLogin profile">
+                      <option value="">— select profile —</option>
+                      <template x-for="p in glProfiles" :key="p.id">
+                        <option :value="p.id" x-text="p.name+(p.notes?' ('+p.notes+')':'')"></option>
+                      </template>
+                    </select>
+                    <input type="text" class="inp" style="width:140px" x-model="glUsername" name="gologin_username"
+                           placeholder="@username (optional)">
+                    <button type="button" class="btn btn-primary" @click="importGlProfile()" :disabled="!glSelectedId||glImporting">
+                      <span x-show="!glImporting">Import</span>
+                      <span x-show="glImporting">Importing...</span>
+                    </button>
+                  </div>
+                  <p style="font-size:11px;color:var(--t3)">Username will be detected from cookies automatically if left empty.</p>
+                </div>
+                <div x-show="glError" class="alert alert-warn" style="font-size:12px;margin-top:8px" x-text="glError"></div>
+              </div>
+            </div>
           </div>
         </div>
         <div class="ss">
@@ -793,6 +840,7 @@ function app(){return{
   na:{username:'',auth_token:'',ct0:'',mode:'direct'},
   authFlow:{status:'idle'},_authPoll:null,
   aiKeyInput:'',getxKeyInput:'',
+  glOpen:false,glToken:'',glProfiles:[],glSelectedId:'',glUsername:'',glLoading:false,glImporting:false,glError:'',
 
   gx:{keywords:'',max_posts:50,product:'Latest',loading:false,status:''},
   outreachSub:'all',
@@ -969,6 +1017,46 @@ function app(){return{
     this.cfg.getx_api_token=this.getxKeyInput.trim();
     this.getxKeyInput='';
     this.showToast('GetX key saved','🔑');
+  },
+
+  async saveGlToken(){
+    if(!this.glToken.trim()){this.showToast('Paste token first','⚠️');return;}
+    await this.api('/api/settings','PATCH',{gologin_api_token:this.glToken.trim()});
+    this.cfg.gologin_api_token=this.glToken.trim();
+    this.glToken='';
+    this.showToast('GoLogin token saved ✅','🔑');
+  },
+
+  async loadGlProfiles(){
+    this.glLoading=true;this.glError='';
+    const r=await this.api('/api/gologin/profiles');
+    this.glLoading=false;
+    if(r.status==='success'){
+      this.glProfiles=r.profiles||[];
+      if(!this.glProfiles.length)this.glError='No profiles found in GoLogin account';
+    }else{
+      this.glError=r.message||'Failed to load profiles';
+    }
+  },
+
+  async importGlProfile(){
+    if(!this.glSelectedId)return;
+    this.glImporting=true;this.glError='';
+    const profile=this.glProfiles.find(p=>p.id===this.glSelectedId);
+    const r=await this.api('/api/gologin/import','POST',{
+      profile_id:this.glSelectedId,
+      profile_name:profile?profile.name:this.glSelectedId,
+      username:(this.glUsername||'').replace('@','').trim()||(profile?profile.name:''),
+    });
+    this.glImporting=false;
+    if(r.status==='success'){
+      this.showToast('Account imported from GoLogin ✅','✅');
+      this.glSelectedId='';this.glUsername='';
+      await this.loadAccounts();
+    }else{
+      this.glError=r.message||'Import failed';
+      this.showToast('Import failed: '+(r.message||''),'❌');
+    }
   },
 
   openAddForm(){this.relinkTarget=null;this.na={username:'',auth_token:'',ct0:'',mode:'direct'};this.authFlow={status:'idle'};this.showAdd=true;},

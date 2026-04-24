@@ -123,6 +123,7 @@ def ensure_outreach_schema():
             try:c.execute(stmt)
             except sqlite3.OperationalError:pass
         c.execute("INSERT OR IGNORE INTO settings (key,value) VALUES ('getx_api_token','')")
+        c.execute("INSERT OR IGNORE INTO settings (key,value) VALUES ('gologin_api_token','')")
         if c.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='schema_version'").fetchone():
             ver=(c.execute('SELECT MAX(version) FROM schema_version').fetchone() or [0])[0] or 0
             if ver<2:
@@ -181,6 +182,17 @@ def kv_get_auth(key):
         if r.status_code==200:return r.json().get('value','')
     except:pass
     return ''
+
+def _get_gologin_token():
+    conn=db()
+    try:
+        row=conn.execute("SELECT value FROM settings WHERE key='gologin_api_token'").fetchone()
+        tok=((row['value'] or '') if row else '').strip()
+    finally:
+        conn.close()
+    if not tok:
+        tok=(kv_get_auth('gologin_api_token') or '').strip()
+    return tok
 
 def _parse_getx_created_at(raw):
     if not raw:
@@ -618,6 +630,93 @@ def relink_account(aid):
     conn=db();row=conn.execute('SELECT username FROM accounts WHERE id=?',(aid,)).fetchone();conn.close()
     if not row:return jsonify({'status':'error','message':'Account not found'})
     return _do_relink(aid,auth_tok,ct0_val,'direct',row['username'])
+
+@app.route('/api/gologin/profiles',methods=['GET'])
+def gologin_list_profiles():
+    tok=_get_gologin_token()
+    if not tok:
+        return jsonify({'status':'error','message':'GoLogin API token not configured. Add it in Settings.'})
+    try:
+        resp=requests.get(
+            'https://api.gologin.com/browser/v2',
+            headers={'Authorization':f'Bearer {tok}','User-Agent':'TwitterAgent/1.0'},
+            timeout=15)
+        if resp.status_code==401:
+            return jsonify({'status':'error','message':'Invalid GoLogin API token'})
+        resp.raise_for_status()
+        data=resp.json()
+        profiles_raw=data.get('profiles',data) if isinstance(data,dict) else data
+        profiles=[
+            {'id':p.get('id',''),'name':p.get('name',''),'notes':p.get('notes',''),
+             'os':p.get('os',''),'browser_type':p.get('browserType',p.get('browser',''))}
+            for p in (profiles_raw if isinstance(profiles_raw,list) else [])
+            if p.get('id')
+        ]
+        return jsonify({'status':'success','profiles':profiles,'count':len(profiles)})
+    except Exception as e:
+        log('ERR',f'gologin_list_profiles: {e}')
+        return jsonify({'status':'error','message':str(e)[:200]})
+
+@app.route('/api/gologin/import',methods=['POST'])
+def gologin_import_profile():
+    b=request.json or{}
+    profile_id=(b.get('profile_id') or '').strip()
+    profile_name=(b.get('profile_name') or profile_id).strip()
+    if not profile_id:
+        return jsonify({'status':'error','message':'profile_id required'})
+    tok=_get_gologin_token()
+    if not tok:
+        return jsonify({'status':'error','message':'GoLogin API token not configured'})
+    try:
+        resp=requests.get(
+            f'https://api.gologin.com/browser/{profile_id}/cookies',
+            headers={'Authorization':f'Bearer {tok}','User-Agent':'TwitterAgent/1.0'},
+            timeout=15)
+        if resp.status_code==401:
+            return jsonify({'status':'error','message':'Invalid GoLogin API token'})
+        if resp.status_code==404:
+            return jsonify({'status':'error','message':f'GoLogin profile {profile_id} not found'})
+        resp.raise_for_status()
+        cookies_raw=resp.json()
+        cookies=cookies_raw if isinstance(cookies_raw,list) else (cookies_raw.get('cookies',[]) if isinstance(cookies_raw,dict) else [])
+    except Exception as e:
+        log('ERR',f'gologin_import fetch cookies: {e}')
+        return jsonify({'status':'error','message':f'Failed to fetch cookies: {e}'})
+    auth_token=''
+    ct0=''
+    for c in cookies:
+        name=c.get('name','')
+        value=(c.get('value') or '').strip()
+        domain=(c.get('domain') or '')
+        if 'twitter.com' in domain or 'x.com' in domain or not domain:
+            if name=='auth_token' and value:auth_token=value
+            if name=='ct0' and value:ct0=value
+    if not auth_token or not ct0:
+        return jsonify({'status':'error',
+            'message':'Could not find auth_token or ct0 in GoLogin profile cookies. Is the Twitter account logged in inside GoLogin?'})
+    username=(b.get('username') or profile_name or 'gologin_user').lstrip('@').strip() or 'gologin_user'
+    log('INFO',f'GoLogin import: profile={profile_id[:8]} auth_token={auth_token[:8]}... ct0={ct0[:8]}...')
+    is_new=False
+    conn=db()
+    existing=conn.execute('SELECT id FROM accounts WHERE username=?',(username,)).fetchone()
+    if existing:
+        acc_id=existing['id']
+        conn.execute('UPDATE accounts SET gologin_profile_id=? WHERE id=?',(profile_id,acc_id))
+        conn.commit();conn.close()
+    else:
+        acc_id=str(uuid.uuid4())
+        conn.execute("""
+            INSERT INTO accounts(id,username,gologin_profile_id,role_discovery,role_posting,
+                                 is_active,health_score,circuit_state,created_at)
+            VALUES(?,?,?,?,?,?,100,'closed',datetime('now'))
+        """,(acc_id,username,profile_id,1,1,0))
+        conn.commit();conn.close()
+        is_new=True
+    rel=_do_relink(acc_id,auth_token,ct0,'gologin',username,is_new=is_new)
+    out=rel.get_json(silent=True)
+    if not isinstance(out,dict):
+        out={'status':'error','message':'relink failed'}
+    return jsonify({**out,'gologin_profile_id':profile_id,'cookies_found':len(cookies)})
 
 @app.route('/api/accounts/<aid>/switch',methods=['POST'])
 def switch_account(aid):
@@ -1417,6 +1516,8 @@ def update_settings():
     conn.commit();conn.close()
     if 'getx_api_token' in body:
         kv_set_auth('getx_api_token',str(body.get('getx_api_token') or '').strip(),'GetXAPI bearer token')
+    if 'gologin_api_token' in body:
+        kv_set_auth('gologin_api_token',str(body.get('gologin_api_token') or '').strip(),'GoLogin API token')
     return jsonify({'status':'success','updated':list(body.keys())})
 
 # ── Workflow state (FIX: always return status field) ─────
