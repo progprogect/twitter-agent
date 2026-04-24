@@ -807,12 +807,16 @@ def get_task_counts():
 @app.route('/api/tasks',methods=['GET'])
 def get_tasks():
     w,pl=_reply_task_filters(include_status=True)
+    page=max(1,int(request.args.get('page',1)))
+    ps=min(50,int(request.args.get('page_size',20)))
     conn=db()
+    total=conn.execute(f'SELECT COUNT(*) FROM reply_tasks rt LEFT JOIN posts p ON rt.post_id=p.id {w}',pl).fetchone()[0]
+    pl2=pl+[ps,(page-1)*ps]
     rows=conn.execute(
-        f'SELECT rt.*,COALESCE(rt.edited_reply,rt.generated_reply) as final_reply,p.text AS post_text,p.url AS post_url,pr.username AS profile_username,a.username AS account_username FROM reply_tasks rt LEFT JOIN posts p ON rt.post_id=p.id LEFT JOIN profiles pr ON rt.profile_id=pr.id LEFT JOIN accounts a ON rt.account_id=a.id {w} ORDER BY rt.created_at DESC LIMIT 200',
-        pl,
+        f'SELECT rt.*,COALESCE(rt.edited_reply,rt.generated_reply) as final_reply,p.text AS post_text,p.url AS post_url,pr.username AS profile_username,a.username AS account_username FROM reply_tasks rt LEFT JOIN posts p ON rt.post_id=p.id LEFT JOIN profiles pr ON rt.profile_id=pr.id LEFT JOIN accounts a ON rt.account_id=a.id {w} ORDER BY rt.created_at DESC LIMIT ? OFFSET ?',
+        pl2,
     ).fetchall()
-    conn.close();return jsonify({'tasks':[dict(r) for r in rows],'count':len(rows),'status':'success'})
+    conn.close();return jsonify({'tasks':[dict(r) for r in rows],'total':total,'page':page,'count':len(rows),'status':'success'})
 
 @app.route('/api/tasks/<tid>/approve',methods=['POST'])
 def approve_task(tid):
@@ -1332,6 +1336,8 @@ def get_conversations():
     """Threads: posted reply_tasks + incoming conversations rows."""
     df=(request.args.get('date_from')or'').strip()[:10]
     dt=(request.args.get('date_to')or'').strip()[:10]
+    page=max(1,int(request.args.get('page',1)))
+    ps=20
     wh=[
         "rt.status='posted'",
         "rt.posted_tweet_id IS NOT NULL",
@@ -1344,6 +1350,14 @@ def get_conversations():
         wh.append('DATE(rt.posted_at) <= DATE(?)');pl.append(dt)
     where_sql=' AND '.join(wh)
     conn=db()
+    total=conn.execute(f"""
+        SELECT COUNT(*)
+        FROM reply_tasks rt
+        LEFT JOIN posts p ON rt.post_id=p.id
+        LEFT JOIN profiles pr ON rt.profile_id=pr.id
+        WHERE {where_sql}
+    """,pl).fetchone()[0]
+    offset=(page-1)*ps
     rows=conn.execute(f"""
         SELECT
             rt.id AS task_id,
@@ -1364,7 +1378,8 @@ def get_conversations():
         LEFT JOIN profiles pr ON rt.profile_id=pr.id
         WHERE {where_sql}
         ORDER BY rt.posted_at DESC
-    """,pl).fetchall()
+        LIMIT ? OFFSET ?
+    """,pl+[ps,offset]).fetchall()
     threads=[]
     for row in rows:
         d=dict(row)
@@ -1378,7 +1393,7 @@ def get_conversations():
         d['final_reply']=d.get('edited_reply') or d.get('our_reply')
         threads.append(d)
     conn.close()
-    return jsonify({'status':'success','threads':threads,'total':len(threads)})
+    return jsonify({'status':'success','threads':threads,'total':total,'page':page})
 
 # ── Analytics ────────────────────────────────────────────
 @app.route('/api/analytics',methods=['GET'])

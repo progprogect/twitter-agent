@@ -90,6 +90,12 @@ a{color:inherit;text-decoration:none;}
 .tbl-wrap{background:var(--sf);border:1px solid var(--bd);border-radius:var(--r);box-shadow:var(--sh);overflow:hidden;}
 .tbl-bar{padding:10px 14px;border-bottom:1px solid var(--bd);display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
 .tbl-count{font-size:11.5px;color:var(--t3);margin-left:auto;}
+.pg-bar{display:flex;align-items:center;gap:6px;padding:10px 14px;border-top:1px solid var(--bd);background:var(--sf2);flex-wrap:wrap;}
+.pg-btn{min-width:32px;height:30px;padding:0 8px;border-radius:var(--rs);font-size:12.5px;font-weight:500;color:var(--t2);background:var(--sf);border:1px solid var(--bd);cursor:pointer;transition:all .15s;display:inline-flex;align-items:center;justify-content:center;}
+.pg-btn:hover:not(:disabled){background:var(--sf2);border-color:#CBD5E1;}
+.pg-btn.active{background:var(--bl);color:#fff;border-color:var(--bl);}
+.pg-btn:disabled{opacity:.4;cursor:not-allowed;}
+.pg-info{font-size:12px;color:var(--t3);margin:0 4px;}
 th{text-align:left;padding:9px 14px;font-size:10.5px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.6px;background:var(--sf2);border-bottom:1px solid var(--bd);white-space:nowrap;}
 td{padding:10px 14px;border-bottom:1px solid var(--bd);vertical-align:middle;font-size:13.5px;}
 tr:last-child td{border-bottom:none;}
@@ -272,7 +278,6 @@ form.filter-panel{margin:0;display:block;}
           <div class="card"><div class="card-head"><span class="card-title">Configuration</span></div><div class="card-body">
             <div class="status-row"><span class="dot dot-gy"></span><span class="s-lbl">AI Provider</span><span class="s-val" x-text="cfg.ai_provider||'extella'"></span></div>
             <div class="status-row"><span class="dot dot-gy"></span><span class="s-lbl">Reply Language</span><span class="s-val" x-text="cfg.reply_language==='auto'?'Auto-detect':'English only'"></span></div>
-            <div class="status-row"><span :class="'dot '+(cfg.background_enabled==='true'?'dot-gn':'dot-gy')"></span><span class="s-lbl">Background Monitor</span><span class="s-val" x-text="cfg.background_enabled==='true'?'Enabled':'Disabled'"></span></div>
           </div></div>
         </div>
       </div>
@@ -379,6 +384,14 @@ form.filter-panel{margin:0;display:block;}
             </tbody>
           </table>
           <div x-show="!oposts.length" class="empty" style="padding:28px"><div class="empty-h">No posts match filters</div></div>
+          <div class="pg-bar" x-show="opostsTotal>20">
+            <button type="button" class="pg-btn" @click="opage=1;loadOutreachPosts()" :disabled="opage<=1">&laquo;</button>
+            <button type="button" class="pg-btn" @click="opage=Math.max(1,opage-1);loadOutreachPosts()" :disabled="opage<=1">&lsaquo;</button>
+            <span class="pg-info" x-text="'Page '+opage+' of '+Math.max(1,Math.ceil(opostsTotal/20))"></span>
+            <button type="button" class="pg-btn" @click="opage=Math.min(Math.ceil(opostsTotal/20),opage+1);loadOutreachPosts()" :disabled="opage>=Math.ceil(opostsTotal/20)">&rsaquo;</button>
+            <button type="button" class="pg-btn" @click="opage=Math.ceil(opostsTotal/20);loadOutreachPosts()" :disabled="opage>=Math.ceil(opostsTotal/20)">&raquo;</button>
+            <span class="pg-info" x-text="opostsTotal+' posts total'"></span>
+          </div>
         </div>
         </template>
 
@@ -447,6 +460,14 @@ form.filter-panel{margin:0;display:block;}
             </tbody>
           </table>
           <div x-show="!oprProfiles.length" class="empty" style="padding:28px"><div class="empty-h">No profiles match these filters</div></div>
+          <div class="pg-bar" x-show="oprTotal>20">
+            <button type="button" class="pg-btn" @click="prpage=1;loadOutreachProfiles()" :disabled="prpage<=1">&laquo;</button>
+            <button type="button" class="pg-btn" @click="prpage=Math.max(1,prpage-1);loadOutreachProfiles()" :disabled="prpage<=1">&lsaquo;</button>
+            <span class="pg-info" x-text="'Page '+prpage+' of '+Math.max(1,Math.ceil(oprTotal/20))"></span>
+            <button type="button" class="pg-btn" @click="prpage=Math.min(Math.ceil(oprTotal/20),prpage+1);loadOutreachProfiles()" :disabled="prpage>=Math.ceil(oprTotal/20)">&rsaquo;</button>
+            <button type="button" class="pg-btn" @click="prpage=Math.ceil(oprTotal/20);loadOutreachProfiles()" :disabled="prpage>=Math.ceil(oprTotal/20)">&raquo;</button>
+            <span class="pg-info" x-text="oprTotal+' profiles total'"></span>
+          </div>
         </div>
         </template>
         </div>
@@ -456,24 +477,24 @@ form.filter-panel{margin:0;display:block;}
       <div x-show="tab==='queue'" class="fade">
         <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:14px">
           <div class="queue-tabs">
-            <button type="button" class="qtab" :class="{'active':tF==='all'}" @click="tF='all';loadTasks()">All<span class="qtab-cnt" x-text="taskCounts.all"></span></button>
-            <button type="button" class="qtab" :class="{'active':tF==='pending'}" @click="tF='pending';loadTasks()">Pending<span class="qtab-cnt" x-text="taskCounts.pending"></span></button>
-            <button type="button" class="qtab" :class="{'active':tF==='approved'}" @click="tF='approved';loadTasks()">Approved<span class="qtab-cnt" x-text="taskCounts.approved"></span></button>
-            <button type="button" class="qtab" :class="{'active':tF==='posted'}" @click="tF='posted';loadTasks()">Posted<span class="qtab-cnt" x-text="taskCounts.posted"></span></button>
-            <button type="button" class="qtab" :class="{'active':tF==='rejected'}" @click="tF='rejected';loadTasks()">Rejected<span class="qtab-cnt" x-text="taskCounts.rejected"></span></button>
+            <button type="button" class="qtab" :class="{'active':tF==='all'}" @click="tF='all';taskPage=1;loadTasks()">All<span class="qtab-cnt" x-text="taskCounts.all"></span></button>
+            <button type="button" class="qtab" :class="{'active':tF==='pending'}" @click="tF='pending';taskPage=1;loadTasks()">Pending<span class="qtab-cnt" x-text="taskCounts.pending"></span></button>
+            <button type="button" class="qtab" :class="{'active':tF==='approved'}" @click="tF='approved';taskPage=1;loadTasks()">Approved<span class="qtab-cnt" x-text="taskCounts.approved"></span></button>
+            <button type="button" class="qtab" :class="{'active':tF==='posted'}" @click="tF='posted';taskPage=1;loadTasks()">Posted<span class="qtab-cnt" x-text="taskCounts.posted"></span></button>
+            <button type="button" class="qtab" :class="{'active':tF==='rejected'}" @click="tF='rejected';taskPage=1;loadTasks()">Rejected<span class="qtab-cnt" x-text="taskCounts.rejected"></span></button>
           </div>
           <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;font-size:12px;color:var(--t2)">
             <span style="color:var(--t3);font-weight:600">Original post date</span>
-            <input type="date" class="inp" name="task_date_from" style="width:auto;min-width:130px" x-model="taskDateFrom" @change="loadTasks()">
+            <input type="date" class="inp" name="task_date_from" style="width:auto;min-width:130px" x-model="taskDateFrom" @change="taskPage=1;loadTasks()">
             <span style="color:var(--t3)">→</span>
-            <input type="date" class="inp" name="task_date_to" style="width:auto;min-width:130px" x-model="taskDateTo" @change="loadTasks()">
+            <input type="date" class="inp" name="task_date_to" style="width:auto;min-width:130px" x-model="taskDateTo" @change="taskPage=1;loadTasks()">
           </div>
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
             <button x-show="tF==='approved'&&tasks.length>0" class="btn btn-primary btn-sm" @click="postAll()">🚀 Post All</button>
             <button x-show="tF==='approved'&&tasks.length>0" class="btn btn-outline btn-sm" @click="postSelectedReplies()">Post Selected</button>
             <button x-show="tF==='pending'&&tasks.length>0" class="btn btn-success btn-sm" @click="bulkApprove()">✓ Approve All</button>
             <button class="btn btn-outline btn-sm" @click="runMonitor()" title="Check for replies to posted tweets">📡 Monitor</button>
-            <span style="font-size:11.5px;color:var(--t3);margin-left:auto" x-text="tasks.length+' tasks'"></span>
+            <span style="font-size:11.5px;color:var(--t3);margin-left:auto" x-text="(taskTotal||0)+' tasks'"></span>
           </div>
         </div>
         <div x-show="tasks.length===0" class="empty"><div class="empty-icon" x-text="tF==='pending'?'⏳':tF==='posted'?'🚀':tF==='all'?'📭':'📭'"></div><div class="empty-h" x-text="tF==='all'?'No tasks':'No '+tF+' tasks'"></div></div>
@@ -511,17 +532,25 @@ form.filter-panel{margin:0;display:block;}
             </div>
           </div>
         </template>
+        <div class="pg-bar" x-show="taskTotal>20">
+          <button type="button" class="pg-btn" @click="taskPage=1;loadTasks()" :disabled="taskPage<=1">&laquo;</button>
+          <button type="button" class="pg-btn" @click="taskPage=Math.max(1,taskPage-1);loadTasks()" :disabled="taskPage<=1">&lsaquo;</button>
+          <span class="pg-info" x-text="'Page '+taskPage+' of '+Math.max(1,Math.ceil(taskTotal/20))"></span>
+          <button type="button" class="pg-btn" @click="taskPage=Math.min(Math.ceil(taskTotal/20),taskPage+1);loadTasks()" :disabled="taskPage>=Math.ceil(taskTotal/20)">&rsaquo;</button>
+          <button type="button" class="pg-btn" @click="taskPage=Math.ceil(taskTotal/20);loadTasks()" :disabled="taskPage>=Math.ceil(taskTotal/20)">&raquo;</button>
+          <span class="pg-info" x-text="taskTotal+' tasks total'"></span>
+        </div>
       </div>
 
       <!-- CONVERSATIONS -->
       <div x-show="tab==='conversations'" class="fade">
         <div class="conv-toolbar" style="margin-bottom:10px">
           <span style="font-size:12px;color:var(--t3);font-weight:600">Posted</span>
-          <input type="date" class="inp" name="conv_date_from" style="width:auto;min-width:130px" x-model="convDateFrom" @change="loadConversations()">
+          <input type="date" class="inp" name="conv_date_from" style="width:auto;min-width:130px" x-model="convDateFrom" @change="convPage=1;loadConversations()">
           <span style="color:var(--t3)">→</span>
-          <input type="date" class="inp" name="conv_date_to" style="width:auto;min-width:130px" x-model="convDateTo" @change="loadConversations()">
+          <input type="date" class="inp" name="conv_date_to" style="width:auto;min-width:130px" x-model="convDateTo" @change="convPage=1;loadConversations()">
           <button type="button" class="btn btn-outline btn-sm" @click="clearConvDates()">Clear dates</button>
-          <span class="tbl-count" style="margin-left:auto" x-text="convThreadCount+' threads'"></span>
+          <span class="tbl-count" style="margin-left:auto" x-text="convTotal+' threads'"></span>
         </div>
         <div class="conv-toolbar">
           <button type="button" class="btn btn-primary btn-sm" :disabled="convChecking" @click="checkReplies()">
@@ -569,6 +598,14 @@ form.filter-panel{margin:0;display:block;}
             </div>
           </div>
         </template>
+        <div class="pg-bar" x-show="convTotal>20">
+          <button type="button" class="pg-btn" @click="convPage=1;loadConversations()" :disabled="convPage<=1">&laquo;</button>
+          <button type="button" class="pg-btn" @click="convPage=Math.max(1,convPage-1);loadConversations()" :disabled="convPage<=1">&lsaquo;</button>
+          <span class="pg-info" x-text="'Page '+convPage+' of '+Math.max(1,Math.ceil(convTotal/20))"></span>
+          <button type="button" class="pg-btn" @click="convPage=Math.min(Math.ceil(convTotal/20),convPage+1);loadConversations()" :disabled="convPage>=Math.ceil(convTotal/20)">&rsaquo;</button>
+          <button type="button" class="pg-btn" @click="convPage=Math.ceil(convTotal/20);loadConversations()" :disabled="convPage>=Math.ceil(convTotal/20)">&raquo;</button>
+          <span class="pg-info" x-text="convTotal+' threads total'"></span>
+        </div>
       </div>
 
       <!-- ANALYTICS -->
@@ -687,16 +724,6 @@ form.filter-panel{margin:0;display:block;}
             </div>
           </div>
         </div>
-        <div class="ss">
-          <div class="ss-head">📡 Background Monitoring</div>
-          <div class="ss-body">
-            <div class="fg"><label class="tgl" for="chk-bg"><input id="chk-bg" name="background_enabled" type="checkbox" :checked="cfg.background_enabled==='true'" @change="saveSetting('background_enabled',$event.target.checked.toString())"><span class="tgl-text">Auto-start on Extella launch</span></label></div>
-            <div class="fg-row">
-              <div class="fg"><label class="label" for="inp-interval">Interval (min)</label><input id="inp-interval" name="monitor_interval_min" type="number" class="inp" x-model="cfg.monitor_interval_min" min="5" max="120" @change="saveSetting('monitor_interval_min',cfg.monitor_interval_min)"></div>
-              <div class="fg"><label class="label" for="inp-max-replies">Max replies/day</label><input id="inp-max-replies" name="max_replies_per_day" type="number" class="inp" x-model="cfg.max_replies_per_day" min="1" max="200" @change="saveSetting('max_replies_per_day',cfg.max_replies_per_day)"></div>
-            </div>
-          </div>
-        </div>
       </div>
 
       <!-- DEBUG LOGS -->
@@ -760,7 +787,7 @@ function app(){return{
   tabs:[{id:'dashboard',label:'Dashboard'},{id:'outreach',label:'Outreach'},{id:'queue',label:'Reply Queue'},{id:'conversations',label:'Conversations'},{id:'analytics',label:'Analytics'},{id:'settings',label:'Settings'},{id:'debug',label:'Debug Logs'}],
   accounts:[],profiles:[],tasks:[],analytics:[],cfg:{},stats:{},
   profileTotal:0,
-  acct:'',tF:'pending',pendingCount:0,taskDateFrom:'',taskDateTo:'',
+  acct:'',tF:'pending',pendingCount:0,taskDateFrom:'',taskDateTo:'',taskPage:1,taskTotal:0,
   taskCounts:{all:0,pending:0,approved:0,posted:0,rejected:0},
   showAdd:false,relinkTarget:null,
   na:{username:'',auth_token:'',ct0:'',mode:'direct'},
@@ -769,7 +796,7 @@ function app(){return{
 
   gx:{keywords:'',max_posts:50,product:'Latest',loading:false,status:''},
   outreachSub:'all',
-  outreachFeed:[],outreachFeedPage:1,outreachFeedPageSize:30,outreachFeedTotal:0,
+  outreachFeed:[],outreachFeedPage:1,outreachFeedPageSize:20,outreachFeedTotal:0,
   selectedPostIds:[],
   genModal:{open:false,intent:'helpful and curious, add genuine value'},
 
@@ -784,7 +811,7 @@ function app(){return{
   debugLogs:[],logFilter:'all',logAutoScroll:true,logLastUpdate:'—',_pollTimer:null,
   postReplySel:[],_afterPostPoll:null,_afterPostPollN:0,
 
-  conversations:[],totalReplies:0,convThreadCount:0,convDateFrom:'',convDateTo:'',
+  conversations:[],totalReplies:0,convPage:1,convTotal:0,convDateFrom:'',convDateTo:'',
   convLastChecked:null,convChecking:false,
 
   toast:{on:false,msg:'',ico:'ℹ️'},_toastTimer:null,
@@ -883,7 +910,7 @@ function app(){return{
   },
 
   async loadOutreachPosts(){
-    let q='/api/posts?page='+this.opage+'&page_size=80&order=DESC';
+    let q='/api/posts?page='+this.opage+'&page_size=20&order=DESC';
     if(this.opDateFrom)q+='&date_from='+encodeURIComponent(this.opDateFrom);
     if(this.opDateTo)q+='&date_to='+encodeURIComponent(this.opDateTo);
     const nmin=Number(this.opMinLikes);if(this.opMinLikes!==''&&this.opMinLikes!=null&&!Number.isNaN(nmin))q+='&min_likes='+encodeURIComponent(String(nmin));
@@ -911,7 +938,7 @@ function app(){return{
   async loadOutreachProfiles(){
     try{const el=document.getElementById('pf-bio-q');if(el&&typeof el.value==='string')this.pfBioSearch=el.value;}catch(_){}
     const ord=this.pfSort==='username'?'ASC':'DESC';
-    let q='/api/profiles?page='+this.prpage+'&page_size=80&sort='+encodeURIComponent(this.pfSort)+'&order='+ord;
+    let q='/api/profiles?page='+this.prpage+'&page_size=20&sort='+encodeURIComponent(this.pfSort)+'&order='+ord;
     const nmin=Number(this.pfMinFollowers);if(this.pfMinFollowers!==''&&this.pfMinFollowers!=null&&!Number.isNaN(nmin))q+='&min_followers='+encodeURIComponent(String(nmin));
     const nmax=Number(this.pfMaxFollowers);if(this.pfMaxFollowers!==''&&this.pfMaxFollowers!=null&&!Number.isNaN(nmax))q+='&max_followers='+encodeURIComponent(String(nmax));
     const loc=(this.pfLocation||'').trim();if(loc)q+='&location='+encodeURIComponent(loc);
@@ -980,9 +1007,11 @@ function app(){return{
     else listUrl+='&status=all';
     if(this.taskDateFrom)listUrl+='&date_from='+encodeURIComponent(this.taskDateFrom);
     if(this.taskDateTo)listUrl+='&date_to='+encodeURIComponent(this.taskDateTo);
+    listUrl+='&page='+this.taskPage+'&page_size=20';
     const r=await this.api(listUrl);
     if(r.tasks)this.tasks=r.tasks.map(t=>({...t,_ed:false,_txt:t.final_reply||t.generated_reply||''}));
     else this.tasks=[];
+    this.taskTotal=typeof r.total==='number'?r.total:(this.tasks.length||0);
     const c=await this.api('/api/tasks/counts');
     if(c&&c.status==='success'&&c.counts){
       this.taskCounts={all:0,pending:0,approved:0,posted:0,rejected:0,...c.counts};
@@ -993,22 +1022,23 @@ function app(){return{
   clearConvDates(){
     this.convDateFrom='';
     this.convDateTo='';
+    this.convPage=1;
     this.loadConversations();
   },
   async loadConversations(){
     const qs=new URLSearchParams();
     if(this.convDateFrom)qs.set('date_from',this.convDateFrom);
     if(this.convDateTo)qs.set('date_to',this.convDateTo);
-    const suf=qs.toString();
-    const r=await this.api(suf?'/api/conversations?'+suf:'/api/conversations');
+    qs.set('page',String(this.convPage));
+    const r=await this.api('/api/conversations?'+qs.toString());
     if(Array.isArray(r.threads)){
       this.conversations=r.threads;
       this.totalReplies=r.threads.reduce((s,t)=>s+(+t.reply_count||0),0);
-      this.convThreadCount=typeof r.total==='number'?r.total:r.threads.length;
+      this.convTotal=typeof r.total==='number'?r.total:r.threads.length;
     }else{
       this.conversations=[];
       this.totalReplies=0;
-      this.convThreadCount=0;
+      this.convTotal=0;
     }
   },
   async checkReplies(){
