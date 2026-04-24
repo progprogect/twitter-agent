@@ -221,6 +221,21 @@ form.filter-panel{margin:0;display:block;}
 .loading-bar{display:flex;align-items:center;gap:8px;background:var(--blb);border:1px solid #BFDBFE;border-radius:var(--rs);padding:10px 14px;font-size:12.5px;color:#1E40AF;margin-bottom:12px;}
 ::-webkit-scrollbar{width:4px;height:4px;}::-webkit-scrollbar-track{background:transparent;}::-webkit-scrollbar-thumb{background:var(--bd);border-radius:2px;}
 .fade{animation:fd .15s ease;}@keyframes fd{from{opacity:0;transform:translateY(3px);}to{opacity:1;transform:translateY(0);}}
+/* Onboarding Tour */
+.tour-overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:8000;pointer-events:none;transition:opacity .25s;}
+.tour-spotlight{position:fixed;border-radius:8px;box-shadow:0 0 0 9999px rgba(0,0,0,.55);z-index:8001;pointer-events:none;transition:all .3s ease;}
+.tour-tip{position:fixed;z-index:8002;background:#fff;border-radius:12px;padding:20px 22px;box-shadow:0 8px 40px rgba(0,0,0,.22);width:280px;pointer-events:auto;animation:tour-pop .2s ease;}
+@keyframes tour-pop{from{opacity:0;transform:scale(.94) translateY(6px)}to{opacity:1;transform:scale(1) translateY(0)}}
+.tour-tip-icon{font-size:28px;margin-bottom:8px;}
+.tour-tip-title{font-size:15px;font-weight:700;color:#0F172A;margin-bottom:6px;}
+.tour-tip-body{font-size:13px;color:#475569;line-height:1.55;margin-bottom:14px;}
+.tour-tip-foot{display:flex;align-items:center;justify-content:space-between;}
+.tour-tip-prog{font-size:11px;color:#94A3B8;}
+.tour-tip-dots{display:flex;gap:4px;}
+.tour-tip-dot{width:6px;height:6px;border-radius:50%;background:#CBD5E1;transition:background .2s;}
+.tour-tip-dot.active{background:#3B82F6;}
+.tour-guide-btn{position:fixed;bottom:22px;left:230px;z-index:7999;background:#3B82F6;color:#fff;border:none;border-radius:20px;padding:7px 14px;font-size:12.5px;font-weight:600;cursor:pointer;box-shadow:0 2px 12px rgba(59,130,246,.35);display:flex;align-items:center;gap:5px;transition:all .15s;}
+.tour-guide-btn:hover{background:#2563EB;box-shadow:0 4px 16px rgba(59,130,246,.45);}
 </style>
 </head>
 <body x-data="app()" x-init="init()" x-cloak>
@@ -231,12 +246,12 @@ form.filter-panel{margin:0;display:block;}
     </div>
     <nav class="sb-nav">
       <button class="nav-item" :class="tab==='dashboard'&&'active'" @click="go('dashboard')"><span class="nav-icon">🏠</span><span class="nav-label">Dashboard</span></button>
-      <button class="nav-item" :class="tab==='outreach'&&'active'" @click="go('outreach')"><span class="nav-icon">🔎</span><span class="nav-label">Outreach</span><span x-show="profileTotal>0" class="nav-badge" x-text="profileTotal" style="background:var(--sbt);color:var(--sb)"></span></button>
-      <button class="nav-item" :class="tab==='queue'&&'active'" @click="go('queue')"><span class="nav-icon">✅</span><span class="nav-label">Reply Queue</span><span x-show="pendingCount>0" class="nav-badge" x-text="pendingCount"></span></button>
-      <button class="nav-item" :class="tab==='conversations'&&'active'" @click="go('conversations')"><span class="nav-icon">💬</span><span class="nav-label">Conversations</span><span x-show="totalReplies>0" class="nav-badge" x-text="totalReplies"></span></button>
+      <button type="button" class="nav-item" data-tour="outreach" :class="tab==='outreach'&&'active'" @click="go('outreach')"><span class="nav-icon">🔎</span><span class="nav-label">Outreach</span><span x-show="profileTotal>0" class="nav-badge" x-text="profileTotal" style="background:var(--sbt);color:var(--sb)"></span></button>
+      <button type="button" class="nav-item" data-tour="queue" :class="tab==='queue'&&'active'" @click="go('queue')"><span class="nav-icon">✅</span><span class="nav-label">Reply Queue</span><span x-show="pendingCount>0" class="nav-badge" x-text="pendingCount"></span></button>
+      <button type="button" class="nav-item" data-tour="conversations" :class="tab==='conversations'&&'active'" @click="go('conversations')"><span class="nav-icon">💬</span><span class="nav-label">Conversations</span><span x-show="totalReplies>0" class="nav-badge" x-text="totalReplies"></span></button>
       <div class="sb-sep"></div>
       <button class="nav-item" :class="tab==='analytics'&&'active'" @click="go('analytics')"><span class="nav-icon">📊</span><span class="nav-label">Analytics</span></button>
-      <button class="nav-item" :class="tab==='settings'&&'active'" @click="go('settings')"><span class="nav-icon">⚙️</span><span class="nav-label">Settings</span><span x-show="accounts.filter(a=>!a.has_session).length>0" class="nav-badge">!</span></button>
+      <button type="button" class="nav-item" data-tour="settings" :class="tab==='settings'&&'active'" @click="go('settings')"><span class="nav-icon">⚙️</span><span class="nav-label">Settings</span><span x-show="accounts.filter(a=>!a.has_session).length>0" class="nav-badge">!</span></button>
       <div class="sb-sep"></div>
       <button class="nav-item" :class="tab==='debug'&&'active'" @click="go('debug')"><span class="nav-icon">🐛</span><span class="nav-label">Debug Logs</span></button>
     </nav>
@@ -258,7 +273,7 @@ form.filter-panel{margin:0;display:block;}
       </select>
       <button class="btn btn-outline btn-sm" @click="load()">↻ Refresh</button>
     </header>
-    <main class="content">
+    <main class="content" data-tour="main-content">
 
       <!-- DASHBOARD -->
       <div x-show="tab==='dashboard'" class="fade">
@@ -890,6 +905,34 @@ form.filter-panel{margin:0;display:block;}
       </div>
     </main>
   </div>
+
+  <!-- Onboarding Tour -->
+  <div class="tour-overlay" x-show="tourActive && !tourSteps[tourStep].target" x-transition.opacity.duration.200ms x-cloak></div>
+  <div class="tour-spotlight" x-show="tourActive && tourSteps[tourStep].target"
+       :style="{top:tourSpot.top,left:tourSpot.left,width:tourSpot.width,height:tourSpot.height}"></div>
+  <div class="tour-tip" x-show="tourActive" x-cloak
+       :style="{top:tourTip.top,left:tourTip.left,transform:tourTip.transform||'none'}">
+    <div class="tour-tip-icon" x-text="tourSteps[tourStep].icon"></div>
+    <div class="tour-tip-title" x-text="tourSteps[tourStep].title"></div>
+    <div class="tour-tip-body" x-text="tourSteps[tourStep].body"></div>
+    <div class="tour-tip-foot">
+      <div>
+        <div class="tour-tip-dots">
+          <template x-for="(s,i) in tourSteps" :key="s.id">
+            <div class="tour-tip-dot" :class="i===tourStep?'active':''"></div>
+          </template>
+        </div>
+        <div class="tour-tip-prog" x-text="(tourStep+1)+' of '+tourSteps.length" style="margin-top:4px"></div>
+      </div>
+      <div style="display:flex;gap:6px;align-items:center">
+        <button type="button" class="btn btn-outline btn-sm" @click="tourSkip()" style="font-size:11px;padding:4px 10px">Skip</button>
+        <button type="button" class="btn btn-outline btn-sm" x-show="tourStep>0" @click="tourBack()" style="font-size:11px;padding:4px 8px">← Back</button>
+        <button type="button" class="btn btn-primary btn-sm" @click="tourNext()" style="font-size:12px;padding:5px 14px"
+                x-text="tourStep===0?'Start Tour':(tourStep===tourSteps.length-1?'Done!':'Next →')"></button>
+      </div>
+    </div>
+  </div>
+  <button type="button" class="tour-guide-btn" @click="tourStart()" x-show="!tourActive" title="Take the tour">? Guide</button>
 </div>
 
 <!-- Toast -->
@@ -953,6 +996,19 @@ function app(){return{
 
   toast:{on:false,msg:'',ico:'ℹ️'},_toastTimer:null,
 
+  tourActive:false,tourStep:0,tourDone:false,
+  tourSpot:{top:0,left:0,width:0,height:0},
+  tourTip:{top:0,left:0,side:'right',transform:'none'},
+  tourSteps:[
+    {id:'welcome',title:'Welcome to TW Lead Agent',body:'Find leads on X (Twitter), generate AI replies, and publish them on a schedule. This quick tour will show you how.',icon:'🐦',target:null,side:'center'},
+    {id:'settings',title:'1. Connect your account',body:'First, go to Settings to add your Twitter account (auth_token + ct0) and your GetX API key for searching leads.',icon:'⚙️',target:'[data-tour="settings"]',side:'right'},
+    {id:'outreach',title:'2. Find leads',body:'Go to Outreach, type keywords, and click Find. GetX searches Twitter and fills your feed with real posts from relevant people.',icon:'🔎',target:'[data-tour="outreach"]',side:'right'},
+    {id:'posts',title:'3. Select posts to reply to',body:'Browse the Posts tab. Use filters to narrow down. Check the posts you want to engage with, then click Generate Replies.',icon:'📋',target:'[data-tour="main-content"]',side:'center-top'},
+    {id:'queue',title:'4. Review & approve replies',body:'Go to Reply Queue → Review. AI has drafted replies for each post. Edit if needed, then click Approve.',icon:'✅',target:'[data-tour="queue"]',side:'right'},
+    {id:'schedule',title:'5. Schedule your sends',body:'Switch to the Schedule tab. Set your delay range (e.g. 60–120 seconds between posts) and daily limit, then click Start Sending.',icon:'📤',target:'[data-tour="main-content"]',side:'center-top'},
+    {id:'conversations',title:'6. Track replies',body:"Check Conversations to see who replied to your tweets. Click Check for replies to refresh. You're all set! 🎉",icon:'💬',target:'[data-tour="conversations"]',side:'right'},
+  ],
+
   init(){
     this.load();
     this._pollTimer=setInterval(()=>{
@@ -960,6 +1016,8 @@ function app(){return{
       if(this.tab==='debug')this.loadLogs();
     },12000);
     this._schedCountdownTimer=setInterval(()=>this.schedComputeCountdown(),1000);
+    this.tourAutoStart();
+    window.addEventListener('resize',()=>{if(this.tourActive)this.tourPosition();});
   },
 
   go(id){
@@ -1490,6 +1548,87 @@ function app(){return{
     this.showToast(r.new_responses>0?(r.new_responses+' new responses 🎉'):'No new responses','📡');
     if(r.new_responses>0)await this.loadTasks();
   },
+
+  tourStart(){
+    this.tourStep=0;
+    this.tourActive=true;
+    this.tourDone=false;
+    this.$nextTick(()=>this.tourPosition());
+  },
+  tourNext(){
+    if(this.tourStep<this.tourSteps.length-1){
+      this.tourStep++;
+      this.$nextTick(()=>this.tourPosition());
+    }else{
+      this.tourFinish();
+    }
+  },
+  tourBack(){
+    if(this.tourStep>0){
+      this.tourStep--;
+      this.$nextTick(()=>this.tourPosition());
+    }
+  },
+  tourSkip(){
+    this.tourFinish();
+  },
+  tourFinish(){
+    this.tourActive=false;
+    this.tourDone=true;
+    localStorage.setItem('tw_tour_done','1');
+  },
+  tourPosition(){
+    const step=this.tourSteps[this.tourStep];
+    if(!step)return;
+    if(!step.target||step.side==='center'){
+      this.tourSpot={top:'-999px',left:'-999px',width:'0px',height:'0px'};
+      this.tourTip={top:'50%',left:'50%',transform:'translate(-50%,-50%)',side:'center'};
+      return;
+    }
+    const el=document.querySelector(step.target);
+    if(!el){
+      this.tourSpot={top:'-999px',left:'-999px',width:'0px',height:'0px'};
+      this.tourTip={top:'50%',left:'50%',transform:'translate(-50%,-50%)',side:'center'};
+      return;
+    }
+    const rect=el.getBoundingClientRect();
+    const pad=6;
+    this.tourSpot={
+      top:(rect.top-pad)+'px',
+      left:(rect.left-pad)+'px',
+      width:(rect.width+pad*2)+'px',
+      height:(rect.height+pad*2)+'px',
+    };
+    const TIP_H=200;
+    if(step.side==='right'){
+      this.tourTip={
+        top:Math.min(rect.top,window.innerHeight-TIP_H-20)+'px',
+        left:(rect.right+16)+'px',
+        transform:'none',
+        side:'right',
+      };
+    }else if(step.side==='center-top'){
+      this.tourTip={
+        top:'80px',
+        left:'50%',
+        transform:'translateX(-50%)',
+        side:'top',
+      };
+    }else{
+      this.tourTip={
+        top:'50%',
+        left:'50%',
+        transform:'translate(-50%,-50%)',
+        side:'center',
+      };
+    }
+  },
+  tourAutoStart(){
+    if(!localStorage.getItem('tw_tour_done')){
+      setTimeout(()=>this.tourStart(),1200);
+    }
+  },
+
   showToast(msg,ico='ℹ️'){
     this.toast={on:true,msg,ico};clearTimeout(this._toastTimer);
     this._toastTimer=setTimeout(()=>{this.toast={...this.toast,on:false};},4200);
