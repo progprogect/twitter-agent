@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-import os,sys,json,re,sqlite3,time,uuid,requests,subprocess as _sp,signal as _sg,threading
+import os,sys,json,re,sqlite3,time,random,uuid,requests,subprocess as _sp,signal as _sg,threading
 from pathlib import Path
-from datetime import datetime,timezone
+from datetime import datetime,timezone,date,timedelta
 from collections import deque
 from flask import Flask,jsonify,request,send_from_directory,Response
 from flask_cors import CORS
@@ -9,6 +9,11 @@ from flask_cors import CORS
 app=Flask(__name__,static_folder=str(Path(__file__).parent/'ui'),static_url_path='')
 CORS(app,methods=['GET','POST','PUT','PATCH','DELETE','OPTIONS'])
 PORT=int(os.environ.get('TW_PORT',7842))
+_SCHEDULER={
+    'running':False,'paused':False,'thread':None,'daily_limit':10,'sent_today':0,
+    'last_reset_date':'','next_post_at':None,'current_task_id':None,
+    'lock':__import__('threading').Lock(),
+}
 DB_PATH=os.environ.get('TW_DB_PATH',str(Path.home()/'Documents'/'twitter_agent'/'data.db'))
 BASE_URL=os.environ.get('EXTELLA_API_URL','https://api.extella.ai')
 API_TOKEN=os.environ.get('TW_API_TOKEN','')
@@ -1318,6 +1323,149 @@ def _mark_reply_task_failed(task_id, error_msg):
     conn.commit()
     conn.close()
 
+def _scheduler_status_dict():
+    s = _SCHEDULER
+    with s['lock']:
+        running = bool(s['running'])
+        paused = bool(s['paused'])
+        if running and paused:
+            st = 'paused'
+        elif running:
+            st = 'running'
+        else:
+            st = 'idle'
+        return {
+            'status': st,
+            'running': running,
+            'paused': paused,
+            'daily_limit': int(s['daily_limit'] or 10),
+            'sent_today': int(s['sent_today'] or 0),
+            'next_post_at': s['next_post_at'],
+            'current_task_id': s['current_task_id'],
+        }
+
+def _scheduler_reset_day_locked():
+    today = date.today().isoformat()
+    if _SCHEDULER['last_reset_date'] != today:
+        _SCHEDULER['sent_today'] = 0
+        _SCHEDULER['last_reset_date'] = today
+
+def _scheduler_loop():
+    log('INFO', 'reply scheduler: loop started')
+    try:
+        while True:
+            with _SCHEDULER['lock']:
+                if not _SCHEDULER['running']:
+                    _SCHEDULER['thread'] = None
+                    _SCHEDULER['next_post_at'] = None
+                    _SCHEDULER['current_task_id'] = None
+                    return
+                if _SCHEDULER['paused']:
+                    paused = True
+                else:
+                    paused = False
+            if paused:
+                time.sleep(0.5)
+                continue
+            with _SCHEDULER['lock']:
+                _scheduler_reset_day_locked()
+                if _SCHEDULER['sent_today'] >= _SCHEDULER['daily_limit']:
+                    limit_hit = True
+                else:
+                    limit_hit = False
+            if limit_hit:
+                time.sleep(60)
+                continue
+            conn = db()
+            row = conn.execute(
+                'SELECT rt.id AS task_id, rt.post_id, rt.account_id, '
+                'COALESCE(rt.edited_reply, rt.generated_reply) AS reply_text, p.url AS post_url '
+                "FROM reply_tasks rt LEFT JOIN posts p ON rt.post_id=p.id "
+                "WHERE rt.status='approved' ORDER BY rt.created_at ASC LIMIT 1"
+            ).fetchone()
+            conn.close()
+            if not row:
+                time.sleep(10)
+                continue
+            tid = row['task_id']
+            tweet_id = _tweet_id_for_reply(row['post_url'], row['post_id'])
+            text = (row['reply_text'] or '').strip()
+            delay = random.uniform(20, 30)
+            next_iso = (datetime.utcnow() + timedelta(seconds=delay)).isoformat() + 'Z'
+            with _SCHEDULER['lock']:
+                if not _SCHEDULER['running'] or _SCHEDULER['paused']:
+                    continue
+                _SCHEDULER['current_task_id'] = tid
+                _SCHEDULER['next_post_at'] = next_iso
+            time.sleep(delay)
+            with _SCHEDULER['lock']:
+                if not _SCHEDULER['running'] or _SCHEDULER['paused']:
+                    _SCHEDULER['next_post_at'] = None
+                    _SCHEDULER['current_task_id'] = None
+                    continue
+            conn = db()
+            row2 = conn.execute(
+                'SELECT rt.id AS task_id, rt.post_id, rt.account_id, '
+                'COALESCE(rt.edited_reply, rt.generated_reply) AS reply_text, p.url AS post_url, rt.status '
+                'FROM reply_tasks rt LEFT JOIN posts p ON rt.post_id=p.id WHERE rt.id=?',
+                (tid,),
+            ).fetchone()
+            conn.close()
+            if not row2 or row2['status'] != 'approved':
+                with _SCHEDULER['lock']:
+                    _SCHEDULER['next_post_at'] = None
+                    _SCHEDULER['current_task_id'] = None
+                continue
+            tweet_id = _tweet_id_for_reply(row2['post_url'], row2['post_id'])
+            text = (row2['reply_text'] or '').strip()
+            if not text:
+                _mark_reply_task_failed(tid, 'empty reply text')
+                with _SCHEDULER['lock']:
+                    _SCHEDULER['next_post_at'] = None
+                    _SCHEDULER['current_task_id'] = None
+                continue
+            if not tweet_id:
+                _mark_reply_task_failed(tid, 'missing tweet_id (no post_url / post_id)')
+                with _SCHEDULER['lock']:
+                    _SCHEDULER['next_post_at'] = None
+                    _SCHEDULER['current_task_id'] = None
+                continue
+            cf_req = _ensure_curl_cffi_requests()
+            if not cf_req:
+                _mark_reply_task_failed(tid, 'curl_cffi not available')
+                with _SCHEDULER['lock']:
+                    _SCHEDULER['next_post_at'] = None
+                    _SCHEDULER['current_task_id'] = None
+                continue
+            pool = build_credentials_pool()
+            cred = _pick_pool_creds(pool, row2['account_id'])
+            if not cred:
+                _mark_reply_task_failed(tid, 'no credentials in pool for this account')
+                with _SCHEDULER['lock']:
+                    _SCHEDULER['next_post_at'] = None
+                    _SCHEDULER['current_task_id'] = None
+                continue
+            rest_id, err = _post_one_reply_cf(
+                cf_req, cred['auth_token'], cred['ct0'], tweet_id, text
+            )
+            if rest_id:
+                _mark_reply_task_posted(tid, rest_id)
+                log('INFO', f'reply scheduler: posted task={tid[:8]}… tweet={rest_id}')
+                with _SCHEDULER['lock']:
+                    _scheduler_reset_day_locked()
+                    _SCHEDULER['sent_today'] = int(_SCHEDULER['sent_today'] or 0) + 1
+            else:
+                _mark_reply_task_failed(tid, err or 'unknown error')
+                log('WARN', f'reply scheduler: failed task={tid[:8]}… {err}')
+            with _SCHEDULER['lock']:
+                _SCHEDULER['next_post_at'] = None
+                _SCHEDULER['current_task_id'] = None
+    finally:
+        with _SCHEDULER['lock']:
+            _SCHEDULER['thread'] = None
+            _SCHEDULER['next_post_at'] = None
+            _SCHEDULER['current_task_id'] = None
+
 def _post_replies_worker(cf_req, job_id, work_items, pool):
     log('INFO', f'post_replies job {job_id}: starting {len(work_items)} task(s), 20s between posts')
     for i, it in enumerate(work_items):
@@ -1420,6 +1568,131 @@ def run_post():return jsonify(run_expert('tw_post',request.json or{}))
 @app.route('/api/run/post_replies',methods=['POST'])
 def run_post_replies():
     return jsonify(local_post_replies(request.json or {}))
+
+def _scheduler_spawn_if_needed():
+    """If running and not paused and no live worker thread, start _scheduler_loop. Do not hold lock across Thread.start()."""
+    t = None
+    with _SCHEDULER['lock']:
+        if not _SCHEDULER['running'] or _SCHEDULER['paused']:
+            return
+        th = _SCHEDULER['thread']
+        if th is not None and th.is_alive():
+            return
+        t = threading.Thread(target=_scheduler_loop, daemon=True, name='reply_scheduler')
+        _SCHEDULER['thread'] = t
+    if t is not None:
+        t.start()
+
+@app.route('/api/scheduler/status', methods=['GET'])
+def scheduler_status():
+    return jsonify(_scheduler_status_dict())
+
+@app.route('/api/scheduler/start', methods=['POST'])
+def scheduler_start():
+    body = request.json or {}
+    try:
+        dl = int(body.get('daily_limit', 10))
+    except (TypeError, ValueError):
+        dl = 10
+    dl = max(1, min(100, dl))
+    with _SCHEDULER['lock']:
+        _SCHEDULER['daily_limit'] = dl
+        _SCHEDULER['running'] = True
+        _SCHEDULER['paused'] = False
+    _scheduler_spawn_if_needed()
+    with _SCHEDULER['lock']:
+        return jsonify({
+            'status': 'success',
+            'running': bool(_SCHEDULER['running']),
+            'daily_limit': int(_SCHEDULER['daily_limit']),
+        })
+
+@app.route('/api/scheduler/pause', methods=['POST'])
+def scheduler_pause():
+    with _SCHEDULER['lock']:
+        _SCHEDULER['paused'] = True
+        _SCHEDULER['next_post_at'] = None
+    return jsonify({'status': 'success', 'paused': True})
+
+@app.route('/api/scheduler/resume', methods=['POST'])
+def scheduler_resume():
+    with _SCHEDULER['lock']:
+        _SCHEDULER['paused'] = False
+    _scheduler_spawn_if_needed()
+    with _SCHEDULER['lock']:
+        return jsonify({
+            'status': 'success',
+            'paused': bool(_SCHEDULER['paused']),
+            'running': bool(_SCHEDULER['running']),
+        })
+
+@app.route('/api/scheduler/stop', methods=['POST'])
+def scheduler_stop():
+    with _SCHEDULER['lock']:
+        _SCHEDULER['running'] = False
+        _SCHEDULER['paused'] = False
+        _SCHEDULER['next_post_at'] = None
+    return jsonify({'status': 'success', 'running': False})
+
+@app.route('/api/scheduler/post_now', methods=['POST'])
+def scheduler_post_now():
+    body = request.json or {}
+    task_id = str(body.get('task_id') or '').strip()
+    if not task_id:
+        return jsonify({'status': 'error', 'error': 'task_id required'}), 400
+    conn = db()
+    row = conn.execute(
+        'SELECT rt.id AS task_id, rt.post_id, rt.account_id, '
+        'COALESCE(rt.edited_reply, rt.generated_reply) AS reply_text, p.url AS post_url, rt.status '
+        'FROM reply_tasks rt LEFT JOIN posts p ON rt.post_id=p.id WHERE rt.id=?',
+        (task_id,),
+    ).fetchone()
+    conn.close()
+    if not row or row['status'] != 'approved':
+        return jsonify({'status': 'error', 'error': 'task not found or not approved'}), 400
+    tid = row['task_id']
+    tweet_id = _tweet_id_for_reply(row['post_url'], row['post_id'])
+    text = (row['reply_text'] or '').strip()
+    if not text:
+        _mark_reply_task_failed(tid, 'empty reply text')
+        return jsonify({'status': 'error', 'error': 'empty reply text'}), 400
+    if not tweet_id:
+        _mark_reply_task_failed(tid, 'missing tweet_id (no post_url / post_id)')
+        return jsonify({'status': 'error', 'error': 'missing tweet_id'}), 400
+    cf_req = _ensure_curl_cffi_requests()
+    if not cf_req:
+        return jsonify({'status': 'error', 'error': 'curl_cffi not available'}), 500
+    pool = build_credentials_pool()
+    if not pool:
+        return jsonify({'status': 'error', 'error': 'No credentials in pool'}), 500
+    cred = _pick_pool_creds(pool, row['account_id'])
+    if not cred:
+        _mark_reply_task_failed(tid, 'no credentials in pool for this account')
+        return jsonify({'status': 'error', 'error': 'no credentials for account'}), 500
+    rest_id, err = _post_one_reply_cf(
+        cf_req, cred['auth_token'], cred['ct0'], tweet_id, text
+    )
+    if not rest_id:
+        _mark_reply_task_failed(tid, err or 'unknown error')
+        return jsonify({'status': 'error', 'error': err or 'post failed'}), 500
+    _mark_reply_task_posted(tid, rest_id)
+    with _SCHEDULER['lock']:
+        _scheduler_reset_day_locked()
+        _SCHEDULER['sent_today'] = int(_SCHEDULER['sent_today'] or 0) + 1
+    return jsonify({'status': 'success', 'posted_tweet_id': rest_id})
+
+@app.route('/api/scheduler/set_limit', methods=['POST'])
+def scheduler_set_limit():
+    body = request.json or {}
+    try:
+        dl = int(body.get('daily_limit', 10))
+    except (TypeError, ValueError):
+        return jsonify({'status': 'error', 'error': 'invalid daily_limit'}), 400
+    dl = max(1, min(100, dl))
+    with _SCHEDULER['lock']:
+        _SCHEDULER['daily_limit'] = dl
+    return jsonify({'status': 'success', 'daily_limit': dl})
+
 @app.route('/api/run/monitor',methods=['POST'])
 def run_monitor():return jsonify(run_expert('tw_monitor',{'action':'check'}))
 @app.route('/api/run/search_getx',methods=['POST'])

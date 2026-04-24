@@ -132,6 +132,14 @@ form.filter-panel{margin:0;display:block;}
 .qtab.active:hover{background:var(--blh);border-color:var(--blh);color:#fff;}
 .qtab-cnt{font-size:11px;font-weight:700;min-width:1.25em;text-align:center;padding:1px 6px;border-radius:8px;background:rgba(15,23,42,.06);color:inherit;}
 .qtab.active .qtab-cnt{background:rgba(255,255,255,.2);}
+.sched-panel{background:var(--sf);border:1px solid var(--bd);border-radius:var(--r);box-shadow:var(--sh);padding:14px 16px;margin-bottom:12px;}
+.sched-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px;}
+.sched-title{font-size:14px;font-weight:700;color:var(--t1);}
+.sched-row{display:flex;align-items:center;flex-wrap:wrap;gap:10px 14px;font-size:12.5px;color:var(--t2);}
+.sched-actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;align-items:center;}
+.sched-limit{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--t2);}
+.sched-hint{font-size:11px;color:var(--t3);margin-top:8px;line-height:1.45;}
+.dot-yl{background:#EAB308;}
 .qc{background:var(--sf);border:1px solid var(--bd);border-radius:var(--r);box-shadow:var(--sh);margin-bottom:10px;transition:box-shadow var(--tr);}
 .qc:hover{box-shadow:var(--shm);}
 .qc-head{padding:10px 14px;background:var(--sf2);border-bottom:1px solid var(--bd);display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
@@ -476,6 +484,30 @@ form.filter-panel{margin:0;display:block;}
       <!-- QUEUE -->
       <div x-show="tab==='queue'" class="fade">
         <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:14px">
+          <div class="sched-panel">
+            <div class="sched-head">
+              <span class="sched-title">Posting Schedule</span>
+              <span class="dot" :class="schedRunning&&!schedPaused?'dot-gn':(schedRunning&&schedPaused?'dot-yl':'dot-gy')"></span>
+              <span style="font-size:12.5px;font-weight:600;color:var(--t1)" x-text="schedRunning&&!schedPaused?'Running':(schedRunning&&schedPaused?'Paused':'Idle')"></span>
+            </div>
+            <div class="sched-row">
+              <span x-show="schedRunning&&!schedPaused&&schedNextIn!==null">Next post in <strong x-text="schedNextIn"></strong>s</span>
+              <span x-show="!(schedRunning&&!schedPaused&&schedNextIn!==null)" style="color:var(--t3)">—</span>
+              <span style="margin-left:auto;color:var(--t3)">Today:</span>
+              <strong x-text="schedSentToday"></strong><span style="color:var(--t3)"> / </span><strong x-text="schedDailyLimit"></strong><span style="color:var(--t3)"> sent</span>
+            </div>
+            <div class="sched-actions">
+              <button type="button" class="btn btn-primary btn-sm" x-show="!schedRunning" @click="schedStart()">Start Queue</button>
+              <button type="button" class="btn btn-outline btn-sm" x-show="schedRunning&&!schedPaused" @click="schedPause()">Pause</button>
+              <button type="button" class="btn btn-primary btn-sm" x-show="schedRunning&&schedPaused" @click="schedResume()">Resume</button>
+              <button type="button" class="btn btn-danger btn-sm" x-show="schedRunning" @click="schedStop()">Stop</button>
+              <span class="sched-limit">
+                <label for="sched-daily-limit" style="color:var(--t3)">Daily limit</label>
+                <input id="sched-daily-limit" name="sched_daily_limit" type="number" class="inp" style="width:64px;padding:6px 8px" min="1" max="100" x-model.number="schedDailyLimit" @change="schedSetLimit()">
+              </span>
+            </div>
+            <div class="sched-hint">Random 20–30s between posts when the queue is running.</div>
+          </div>
           <div class="queue-tabs">
             <button type="button" class="qtab" :class="{'active':tF==='all'}" @click="tF='all';taskPage=1;loadTasks()">All<span class="qtab-cnt" x-text="taskCounts.all"></span></button>
             <button type="button" class="qtab" :class="{'active':tF==='pending'}" @click="tF='pending';taskPage=1;loadTasks()">Pending<span class="qtab-cnt" x-text="taskCounts.pending"></span></button>
@@ -527,7 +559,10 @@ form.filter-panel{margin:0;display:block;}
                 <button class="btn btn-outline btn-sm" @click="t._ed=!t._ed;t._txt=t.final_reply||t.generated_reply||''"><span x-text="t._ed?'✕':'✏️ Edit'"></span></button>
                 <button class="btn btn-danger btn-sm" @click="reject(t)">✕ Reject</button>
               </div>
-              <div x-show="t.status==='approved'" style="font-size:12px;color:var(--gn);font-weight:500">✓ Approved</div>
+              <div x-show="t.status==='approved'" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                <span style="font-size:12px;color:var(--gn);font-weight:500">✓ Approved</span>
+                <button type="button" class="btn btn-outline btn-sm" :disabled="t._posting" @click="postNow(t)">Now</button>
+              </div>
               <div x-show="t.status==='posted'" style="font-size:12px;color:var(--bl);font-weight:500">🚀 Posted</div>
             </div>
           </div>
@@ -858,6 +893,7 @@ function app(){return{
 
   debugLogs:[],logFilter:'all',logAutoScroll:true,logLastUpdate:'—',_pollTimer:null,
   postReplySel:[],_afterPostPoll:null,_afterPostPollN:0,
+  schedRunning:false,schedPaused:false,schedDailyLimit:10,schedSentToday:0,schedNextAt:null,schedNextIn:null,_schedPollTimer:null,_schedCountdownTimer:null,
 
   conversations:[],totalReplies:0,convPage:1,convTotal:0,convDateFrom:'',convDateTo:'',
   convLastChecked:null,convChecking:false,
@@ -870,13 +906,21 @@ function app(){return{
       this.load();
       if(this.tab==='debug')this.loadLogs();
     },12000);
+    this._schedCountdownTimer=setInterval(()=>this.schedComputeCountdown(),1000);
   },
 
   go(id){
+    if(this.tab==='queue'&&id!=='queue')this.stopSchedPoll();
     this.tab=id;
     if(id==='outreach')this.switchOutreach(this.outreachSub);
     if(id==='debug')this.loadLogs();
-    if(id==='queue')this.loadTasks();
+    if(id==='queue'){
+      this.loadTasks();
+      this.loadSchedulerStatus().then(()=>{
+        if(this.schedRunning)this.startSchedPoll();
+        else this.stopSchedPoll();
+      });
+    }
     if(id==='conversations')this.loadConversations();
   },
 
@@ -1079,9 +1123,10 @@ function app(){return{
   },
 
   async load(){
-    await Promise.all([this.loadAccounts(),this.loadProfiles(),this.loadTasks(),this.loadAnalytics(),this.loadSettings()]);
+    await Promise.all([this.loadAccounts(),this.loadProfiles(),this.loadTasks(),this.loadAnalytics(),this.loadSettings(),this.loadSchedulerStatus()]);
     if(this.tab==='outreach')this.switchOutreach(this.outreachSub);
     if(this.tab==='conversations')await this.loadConversations();
+    if(this.tab==='queue'&&this.schedRunning)this.startSchedPoll();
   },
   async loadAccounts(){const r=await this.api('/api/accounts');if(r.accounts)this.accounts=r.accounts;},
   async loadProfiles(){
@@ -1097,7 +1142,7 @@ function app(){return{
     if(this.taskDateTo)listUrl+='&date_to='+encodeURIComponent(this.taskDateTo);
     listUrl+='&page='+this.taskPage+'&page_size=20';
     const r=await this.api(listUrl);
-    if(r.tasks)this.tasks=r.tasks.map(t=>({...t,_ed:false,_txt:t.final_reply||t.generated_reply||''}));
+    if(r.tasks)this.tasks=r.tasks.map(t=>({...t,_ed:false,_txt:t.final_reply||t.generated_reply||'',_posting:false}));
     else this.tasks=[];
     this.taskTotal=typeof r.total==='number'?r.total:(this.tasks.length||0);
     const c=await this.api('/api/tasks/counts');
@@ -1239,6 +1284,97 @@ function app(){return{
       this.showToast(r.message||'Nothing to post','⚠️');
     }else{
       this.showToast((r.message||r.error||'Could not queue posting'),'❌');
+    }
+  },
+  async loadSchedulerStatus(){
+    const r=await this.api('/api/scheduler/status');
+    if(!r||r.error)return;
+    this.schedRunning=!!r.running;
+    this.schedPaused=!!r.paused;
+    if(typeof r.daily_limit==='number')this.schedDailyLimit=r.daily_limit;
+    if(typeof r.sent_today==='number')this.schedSentToday=r.sent_today;
+    this.schedNextAt=r.next_post_at||null;
+    this.schedComputeCountdown();
+    if(this.tab==='queue'&&!this.schedRunning)this.stopSchedPoll();
+  },
+  schedComputeCountdown(){
+    if(!this.schedNextAt){this.schedNextIn=null;return;}
+    const t=new Date(this.schedNextAt).getTime();
+    if(Number.isNaN(t)){this.schedNextIn=null;return;}
+    this.schedNextIn=Math.max(0,Math.ceil((t-Date.now())/1000));
+  },
+  startSchedPoll(){
+    if(this._schedPollTimer)clearInterval(this._schedPollTimer);
+    this._schedPollTimer=setInterval(async()=>{
+      await this.loadSchedulerStatus();
+      if(this.schedRunning)await this.loadTasks();
+    },5000);
+  },
+  stopSchedPoll(){
+    if(this._schedPollTimer){clearInterval(this._schedPollTimer);this._schedPollTimer=null;}
+  },
+  async schedStart(){
+    const lim=Math.min(100,Math.max(1,parseInt(String(this.schedDailyLimit),10)||10));
+    this.schedDailyLimit=lim;
+    const r=await this.api('/api/scheduler/start','POST',{daily_limit:lim});
+    if(r.status==='success'){
+      this.schedRunning=!!r.running;
+      this.schedPaused=false;
+      if(typeof r.daily_limit==='number')this.schedDailyLimit=r.daily_limit;
+      this.showToast('Queue started','▶️');
+      await this.loadSchedulerStatus();
+      this.startSchedPoll();
+    }else{
+      this.showToast(r.error||r.message||'Could not start','❌');
+    }
+  },
+  async schedPause(){
+    const r=await this.api('/api/scheduler/pause','POST',{});
+    if(r.status==='success'){
+      this.schedPaused=true;
+      this.schedNextAt=null;
+      this.schedNextIn=null;
+      await this.loadSchedulerStatus();
+    }
+  },
+  async schedResume(){
+    const r=await this.api('/api/scheduler/resume','POST',{});
+    if(r.status==='success'){
+      this.schedPaused=!!r.paused;
+      this.schedRunning=!!r.running;
+      this.showToast('Resumed','▶️');
+      await this.loadSchedulerStatus();
+      this.startSchedPoll();
+    }
+  },
+  async schedStop(){
+    const r=await this.api('/api/scheduler/stop','POST',{});
+    if(r.status==='success'){
+      this.schedRunning=false;
+      this.schedPaused=false;
+      this.schedNextAt=null;
+      this.schedNextIn=null;
+      this.stopSchedPoll();
+      await this.loadSchedulerStatus();
+      this.showToast('Queue stopped','⏹');
+    }
+  },
+  async schedSetLimit(){
+    const lim=Math.min(100,Math.max(1,parseInt(String(this.schedDailyLimit),10)||10));
+    this.schedDailyLimit=lim;
+    await this.api('/api/scheduler/set_limit','POST',{daily_limit:lim});
+    await this.loadSchedulerStatus();
+  },
+  async postNow(t){
+    t._posting=true;
+    const r=await this.api('/api/scheduler/post_now','POST',{task_id:t.id});
+    t._posting=false;
+    if(r.status==='success'){
+      this.showToast('Posted ✅','🚀');
+      await this.loadTasks();
+      await this.loadSchedulerStatus();
+    }else{
+      this.showToast(r.error||r.message||'Post failed','❌');
     }
   },
   async postSelectedReplies(){
